@@ -1,0 +1,1283 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>倒货台 · Skin Desk</title>
+<style>
+  :root{
+    --bg:#0e1419; --panel:#161f2a; --panel-2:#1d2937; --line:#2a3a4b;
+    --text:#c8d4e0; --muted:#65788b; --accent:#5aa9e6; --accent-dim:rgba(90,169,230,.14);
+    --up:#5fd38d; --down:#e8736b; --warn:#e7b75f;
+    --mono:ui-monospace,"SF Mono",Menlo,"JetBrains Mono",monospace;
+    --ui:-apple-system,"Segoe UI",system-ui,"PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--ui);font-size:14px;
+       -webkit-font-smoothing:antialiased}
+  a{color:var(--accent);text-decoration:none}
+
+  header{display:flex;align-items:baseline;gap:14px;padding:18px 24px;border-bottom:1px solid var(--line)}
+  header h1{margin:0;font-size:19px;letter-spacing:.5px;font-weight:650}
+  header h1 .sub{color:var(--muted);font-weight:400;font-size:12px;letter-spacing:2px;margin-left:8px;text-transform:uppercase}
+  .live{margin-left:auto;display:flex;align-items:center;gap:7px;color:var(--muted);font-size:12px;font-family:var(--mono)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+  .dot.on{background:var(--up);box-shadow:0 0 0 0 rgba(95,211,141,.5);animation:pulse 1.4s ease-out}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(95,211,141,.5)}100%{box-shadow:0 0 0 7px rgba(95,211,141,0)}}
+
+  .banner{margin:0;padding:9px 24px;font-size:12.5px;background:rgba(231,183,95,.09);
+          color:var(--warn);border-bottom:1px solid var(--line)}
+  .banner.armed{background:rgba(232,115,107,.1);color:var(--down)}
+
+  .wrap{padding:20px 24px;max-width:1840px;margin:0 auto}
+
+  /* summary */
+  .summary{display:flex;gap:30px;margin-bottom:18px;font-family:var(--mono)}
+  .summary .k{color:var(--muted);font-size:11px;letter-spacing:1px;text-transform:uppercase;font-family:var(--ui)}
+  .summary .v{font-size:22px;font-weight:600;margin-top:3px}
+
+  /* add form */
+  form.add{display:flex;flex-wrap:wrap;gap:10px;align-items:end;background:var(--panel);
+           border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:18px}
+  form.add .f{display:flex;flex-direction:column;gap:5px}
+  form.add label{font-size:11px;color:var(--muted);letter-spacing:.5px}
+  form.add input{background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+                 border-radius:7px;padding:8px 10px;font-family:var(--mono);font-size:13px;outline:none}
+  form.add input:focus{border-color:var(--accent)}
+  form.add input[name=name]{width:220px;font-family:var(--ui)}
+  form.add input[type=number]{width:88px}
+  form.add input[type=datetime-local]{width:200px;font-family:var(--ui)}
+  form.add select{background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+                  border-radius:7px;padding:8px 10px;font-family:var(--ui);font-size:13px;outline:none;width:96px}
+  form.add select:focus{border-color:var(--accent)}
+  td select.gsel{background:transparent;border:1px solid transparent;border-radius:5px;color:var(--text);
+                 font-family:var(--ui);font-size:12px;padding:3px 4px;outline:none;width:74px}
+  td select.gsel:hover{border-color:var(--line)}
+  td select.gsel:focus{border-color:var(--accent);background:var(--panel-2)}
+  td select.gsel option{background:var(--panel-2);color:var(--text)}
+  button{cursor:pointer;border:none;border-radius:7px;font-size:13px;font-family:var(--ui)}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .btn{background:var(--accent);color:#06121d;padding:9px 18px;font-weight:600}
+  .btn:hover{filter:brightness(1.08)}
+  .btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--line)}
+  .btn.ghost:hover{color:var(--text);border-color:var(--muted)}
+  .btn.go{background:var(--up);color:#06121d}
+  .btn.sm{padding:7px 12px;font-size:12px}
+
+  /* table */
+  .scroll{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+  table{width:100%;border-collapse:collapse;min-width:1080px}
+  thead th{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);
+           text-align:right;padding:10px 8px;font-weight:500;border-bottom:1px solid var(--line);
+           white-space:nowrap;background:var(--panel)}
+  thead th.l{text-align:left}
+  thead th.c{text-align:center}
+  tbody td{padding:8px 8px;border-bottom:1px solid var(--line);text-align:right;
+           font-family:var(--mono);white-space:nowrap;vertical-align:middle}
+  tbody td.l{text-align:left}
+  tbody td.c{text-align:center}
+  tbody tr:hover{background:rgba(90,169,230,.04)}
+  tbody tr.sel{background:rgba(90,169,230,.09)}
+  tbody tr:last-child td{border-bottom:none}
+  input[type=checkbox]{width:15px;height:15px;accent-color:var(--accent);cursor:pointer}
+
+  .name{font-family:var(--ui);font-weight:550;background:transparent;border:none;color:var(--text);
+        font-size:13.5px;width:146px;outline:none;border-bottom:1px solid transparent}
+  .name:focus{border-bottom-color:var(--accent)}
+  .sub{display:block;color:var(--muted);font-size:11px;margin-top:2px;font-family:var(--mono)}
+
+  td input.num{width:66px;background:transparent;border:1px solid transparent;border-radius:5px;
+               color:var(--text);font-family:var(--mono);font-size:13px;text-align:right;padding:4px 5px;outline:none}
+  td input.num:hover{border-color:var(--line)}
+  td input.num:focus{border-color:var(--accent);background:var(--panel-2)}
+  td input.dt{background:transparent;border:1px solid transparent;border-radius:5px;color:var(--text);
+              font-family:var(--ui);font-size:12px;padding:4px 5px;outline:none;width:150px}
+  td input.dt:hover{border-color:var(--line)}
+  td input.dt:focus{border-color:var(--accent);background:var(--panel-2)}
+
+  .price{color:var(--accent);font-weight:600}
+  .net{font-weight:700;font-size:14px;color:var(--up)}
+  .up{color:var(--up)} .down{color:var(--down)} .dim{color:var(--muted)}
+  .need{color:var(--warn);font-size:11px;font-family:var(--ui)}
+
+  .badge{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-family:var(--ui);font-weight:600}
+  .badge.watching{background:rgba(101,120,139,.18);color:var(--muted)}
+  .badge.scheduled{background:var(--accent-dim);color:var(--accent)}
+  .badge.due{background:rgba(231,183,95,.16);color:var(--warn)}
+  .badge.pending{background:rgba(231,183,95,.16);color:var(--warn)}
+  .badge.listed{background:rgba(95,211,141,.16);color:var(--up)}
+  .badge.sent{background:rgba(95,211,141,.16);color:var(--up)}
+  .badge.error{background:rgba(232,115,107,.16);color:var(--down)}
+  .cd{font-family:var(--mono);font-size:12px;color:var(--warn);margin-top:3px;display:block}
+
+  td.act{white-space:nowrap}
+  .iconbtn{background:transparent;border:1px solid var(--line);color:var(--muted);padding:5px 8px;
+           border-radius:6px;font-size:12px;margin-left:4px}
+  .iconbtn:hover{color:var(--text);border-color:var(--muted)}
+  .iconbtn.sell:hover{color:var(--up);border-color:var(--up)}
+  .iconbtn.del:hover{color:var(--down);border-color:var(--down)}
+  .iconbtn.send:hover{color:var(--accent);border-color:var(--accent)}
+
+  .tradebar{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);
+            border-radius:10px;padding:11px 16px;margin-bottom:16px;flex-wrap:wrap}
+  .tradebar label{font-size:12px;color:var(--muted);letter-spacing:.5px;white-space:nowrap}
+  .tradebar input{flex:1;min-width:300px;background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+                  border-radius:7px;padding:8px 10px;font-family:var(--mono);font-size:12px;outline:none}
+  .tradebar input:focus{border-color:var(--accent)}
+  .tradebar .tlnote{font-size:11px;color:var(--muted)}
+  .tlhint{font-family:var(--mono);font-size:11px;margin-left:4px}
+  .tlhint.ok{color:var(--up)} .tlhint.bad{color:var(--down)}
+  td input.tl{width:116px;background:transparent;border:1px solid transparent;border-radius:5px;color:var(--text);
+              font-family:var(--mono);font-size:11px;padding:4px 5px;outline:none}
+  td input.tl:hover{border-color:var(--line)}
+  td input.tl:focus{border-color:var(--accent);background:var(--panel-2)}
+
+  /* Steam 登录条 + 批量操作条 */
+  .loginbar{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);
+            border-radius:10px;padding:11px 16px;margin-bottom:16px;flex-wrap:wrap}
+  .loginbar .label{font-size:12px;color:var(--muted);letter-spacing:.5px;white-space:nowrap}
+  .pill{font-family:var(--mono);font-size:12px;padding:3px 10px;border-radius:20px}
+  .pill.off{background:rgba(101,120,139,.18);color:var(--muted)}
+  .pill.on{background:rgba(95,211,141,.16);color:var(--up)}
+  .pill.warn{background:rgba(231,183,95,.16);color:var(--warn)}
+  .loginbar .grow{flex:1}
+  .batchbar{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+  .batchbar .selinfo{font-size:12px;color:var(--muted);font-family:var(--mono)}
+
+  .settings{background:var(--panel);border:1px solid var(--line);border-radius:10px;margin-bottom:16px;overflow:hidden}
+  .settings summary{cursor:pointer;padding:12px 16px;font-size:13px;color:var(--text);user-select:none;list-style:none}
+  .settings summary::-webkit-details-marker{display:none}
+  .settings summary::before{content:"▸ ";color:var(--muted)}
+  .settings[open] summary::before{content:"▾ "}
+  .setgrid{display:flex;flex-wrap:wrap;gap:12px;align-items:end;padding:4px 16px 12px}
+  .setgrid .f{display:flex;flex-direction:column;gap:5px}
+  .setgrid .f label{font-size:11px;color:var(--muted)}
+  .setgrid input[type=text],.setgrid input[type=password]{background:var(--panel-2);border:1px solid var(--line);
+        color:var(--text);border-radius:7px;padding:8px 10px;font-family:var(--mono);font-size:12px;outline:none;width:210px}
+  .setgrid input:focus{border-color:var(--accent)}
+  .setgrid .chk{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text);width:100%;cursor:pointer}
+  .setnote{margin:0;padding:0 16px 14px;font-size:11px;color:var(--muted);line-height:1.5}
+  .setnote code{color:var(--accent);font-family:var(--mono)}
+
+  .empty{padding:48px;text-align:center;color:var(--muted)}
+  .msg{font-size:11px;color:var(--muted);font-family:var(--mono);max-width:220px;white-space:normal;text-align:left}
+
+  /* toast */
+  #toasts{position:fixed;right:18px;bottom:18px;display:flex;flex-direction:column;gap:8px;z-index:60;max-width:380px}
+  .toast{background:var(--panel-2);border:1px solid var(--line);border-left:3px solid var(--accent);
+         color:var(--text);padding:10px 14px;border-radius:8px;font-size:13px;box-shadow:0 6px 24px rgba(0,0,0,.4);
+         animation:slidein .18s ease-out}
+  .toast.ok{border-left-color:var(--up)} .toast.err{border-left-color:var(--down)}
+  .toast.warn{border-left-color:var(--warn)}
+  .toast .tt{font-weight:600;margin-bottom:2px} .toast .tb{color:var(--muted);font-size:12px;white-space:pre-wrap}
+  @keyframes slidein{from{transform:translateX(20px);opacity:0}to{transform:none;opacity:1}}
+
+  /* modal */
+  .overlay{position:fixed;inset:0;background:rgba(5,9,13,.66);display:flex;align-items:center;
+           justify-content:center;z-index:70;padding:20px}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:12px;max-width:520px;width:100%;
+         max-height:84vh;overflow:auto;box-shadow:0 18px 60px rgba(0,0,0,.6)}
+  .modal h3{margin:0;padding:16px 18px;border-bottom:1px solid var(--line);font-size:15px}
+  .modal .body{padding:16px 18px;font-size:13px;line-height:1.55}
+  .modal .body p{margin:0 0 10px} .modal .body .muted{color:var(--muted);font-size:12px}
+  .modal .actions{display:flex;gap:10px;justify-content:flex-end;padding:12px 18px;border-top:1px solid var(--line)}
+  .modal input.big{width:100%;background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+        border-radius:8px;padding:10px 12px;font-family:var(--mono);font-size:14px;outline:none}
+  .modal input.code{letter-spacing:6px;text-align:center;font-size:20px}
+  .modal textarea{width:100%;height:90px;background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+        border-radius:8px;padding:10px 12px;font-family:var(--mono);font-size:12px;outline:none;resize:vertical}
+  .f2{display:flex;flex-direction:column;gap:5px}
+  .f2 label{font-size:11px;color:var(--muted)}
+  .f2 input{background:var(--panel-2);border:1px solid var(--line);color:var(--text);border-radius:7px;
+            padding:8px 10px;font-family:var(--mono);font-size:13px;outline:none;width:110px}
+  .f2 input:focus{border-color:var(--accent)}
+  .blist{margin:0;padding:0;list-style:none;max-height:230px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+  .blist li{display:flex;justify-content:space-between;gap:12px;padding:8px 12px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:12px}
+  .blist li:last-child{border-bottom:none}
+  .blist .bn{font-family:var(--ui);color:var(--text)} .blist .bp{color:var(--up);font-weight:600}
+  .btotal{display:flex;justify-content:space-between;margin-top:10px;font-family:var(--mono);font-weight:700}
+  .spin{display:inline-block;width:13px;height:13px;border:2px solid var(--line);border-top-color:var(--accent);
+        border-radius:50%;animation:rot .7s linear infinite;vertical-align:-2px;margin-right:6px}
+  @keyframes rot{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<header>
+  <h1>倒货台<span class="sub">Skin Desk</span></h1>
+  <div class="live"><span id="dot" class="dot"></span><span id="livetxt">连接中…</span></div>
+</header>
+<p id="banner" class="banner">读取设置中…</p>
+
+<div class="wrap">
+  <div class="summary">
+    <div><div class="k">持仓数</div><div class="v" id="s-count">0</div></div>
+    <div><div class="k">总到手</div><div class="v" id="s-net">¥0</div></div>
+    <div><div class="k">总盈亏</div><div class="v" id="s-profit">¥0</div></div>
+  </div>
+
+  <!-- Steam 登录条（批量上架需要） -->
+  <div class="loginbar">
+    <span class="label">Steam 登录</span>
+    <span id="authPill" class="pill off">未登录</span>
+    <span class="grow"></span>
+    <button class="btn ghost sm" id="btnLoginAuto" type="button">账号密码登录</button>
+    <button class="btn ghost sm" id="btnLoginCookie" type="button">粘贴 Cookie 登录</button>
+    <button class="btn ghost sm" id="btnLogout" type="button" style="display:none">退出登录</button>
+  </div>
+
+  <details class="settings" id="setPanel">
+    <summary>账号设置（自动上架登录 / 送出 需要填）</summary>
+    <div class="setgrid">
+      <div class="f"><label>Steam Web API Key（可不填）</label><input id="set_key" type="password" placeholder="未设置"></div>
+      <div class="f"><label>Steam 用户名</label><input id="set_user" type="text"></div>
+      <div class="f"><label>Steam 密码</label><input id="set_pass" type="password" placeholder="未设置"></div>
+      <div class="f"><label>加速器本地代理（登录失败时填）</label><input id="set_proxy" type="text" placeholder="例如 127.0.0.1:7890"></div>
+      <div class="f"><label>令牌文件路径 (maFile，可不填)</label><input id="set_maf" type="text" placeholder="steamguard.json"></div>
+      <div class="f"><label>默认加载的库存游戏</label><select id="set_inv_game"></select></div>
+      <div class="f"><label>网页访问密码（联网/Docker 才需要）</label><input id="set_webpw" type="text" placeholder="留空=不改"></div>
+      <label class="chk"><input id="set_auto" type="checkbox"> 定时到点自动上架（到点自动挂，仍需你手机确认）</label>
+      <label class="chk"><input id="set_trade" type="checkbox"> 允许送出/发货（把物品发到交易链接，危险）</label>
+      <label class="chk"><input id="set_insecure" type="checkbox"> 兼容本机加速器证书（关闭 HTTPS 证书校验）</label>
+      <button class="btn" id="saveSet" type="button">保存设置</button>
+    </div>
+    <p class="setnote">⚠️ 这些只保存在本机的 <code>secret.json</code>（已设为仅本人可读），<b>绝不要外传或截图给别人</b>。批量上架用账号密码登录、挂单后由你<b>手机令牌手动确认</b>。密码/Key 留空表示不修改。</p>
+  </details>
+
+  <div class="tradebar">
+    <label>我的交易链接</label>
+    <input id="myTL" placeholder="https://steamcommunity.com/tradeoffer/new/?partner=...&token=...">
+    <span id="myTLok" class="tlhint"></span>
+    <button class="btn ghost" id="copyTL" type="button">复制</button>
+    <span class="tlnote">粘到 IGXE/BUFF 用 · Steam 官方市场上架<b>不需要</b>它</span>
+  </div>
+
+  <form class="add" id="addForm" autocomplete="off">
+    <div class="f"><label>游戏</label><select name="appid" id="addGame"></select></div>
+    <div class="f"><label>物品英文名 (market hash name)</label>
+      <input name="name" placeholder="Snakebite Case" required></div>
+    <div class="f"><label>数量</label><input name="qty" type="number" step="1" min="1" placeholder="1"></div>
+    <div class="f"><label>购入成本 ¥（游戏掉落填 0）</label><input name="purchase" type="number" step="0.01" min="0" placeholder="0"></div>
+    <div class="f"><label>余额折扣 %（例如 75 = 7.5折）</label><input name="markup" type="number" step="0.1" value="75"></div>
+    <div class="f"><label>上架价 ¥（买家看到，可选）</label><input name="listing_price" type="text" inputmode="decimal" placeholder="留空按余额折扣计算"></div>
+    <div class="f"><label>手续费 %</label><input name="fee" type="number" step="0.1" value="15"></div>
+    <div class="f"><label>出售时间 (留空=只盯价)</label><input name="sell_at" type="datetime-local"></div>
+    <button class="btn" type="submit">添加</button>
+  </form>
+
+  <div class="batchbar">
+    <button class="btn go" id="btnBatch" type="button" disabled>批量上架 (0)</button>
+    <button class="btn go" id="btnListConfirm" type="button" disabled>上架并确认 (0)</button>
+    <button class="btn ghost" id="btnConfirmOnly" type="button" disabled>批量确认 (0)</button>
+    <button class="btn ghost" id="btnCleanupPending" type="button" disabled>清理待确认 (0)</button>
+    <button class="btn ghost" id="btnDelist" type="button" disabled>批量下架 (0)</button>
+    <button class="btn ghost" id="btnSetPrice" type="button" disabled>批量设价 (0)</button>
+    <button class="btn ghost" id="btnInv" type="button">从 Steam 库存选择</button>
+    <button class="btn ghost" id="btnRecheck" type="button" title="用库存核对：取消了的挂单会回到库存，状态改回盯价中">核对挂单</button>
+    <button class="btn ghost" id="btnSteamSync" type="button">同步 Steam</button>
+    <button class="btn ghost" id="btnHistory" type="button">操作记录</button>
+    <span class="selinfo" id="selInfo">从库存选择物品后，只需填写“上架价”；勾选后即可批量上架，再去手机令牌确认。</span>
+  </div>
+
+  <div class="scroll">
+    <table>
+      <thead><tr>
+        <th class="c"><input id="chkAll" type="checkbox" title="全选/取消"></th>
+        <th>游戏</th>
+        <th class="l">物品 / 在售量</th>
+        <th>本次操作 / Steam数量</th>
+        <th>Steam 最低</th>
+        <th>购入</th>
+        <th>余额折扣%</th>
+        <th>挂单价(买家看)</th>
+        <th>费率%</th>
+        <th>到手 = 挂出价</th>
+        <th>盈亏</th>
+        <th class="l">出售时间</th>
+        <th class="l">状态</th>
+        <th class="l">交易链接</th>
+        <th></th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+  <div id="empty" class="empty" style="display:none">还没有监控的物品。上面加一个英文名就行（例如 <b>Snakebite Case</b>）。</div>
+</div>
+
+<div id="toasts"></div>
+<div id="modalRoot"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+let CFG = {currency:23, auto_list:false,
+  games:[{appid:730,name:'CS2'},{appid:252490,name:'Rust'},{appid:440,name:'TF2'},{appid:570,name:'Dota2'},{appid:753,name:'Steam'}]};
+let state = [];           // 当前物品（含计算值）
+let editing = null;       // 正在编辑的输入，避免被刷新覆盖
+let selected = new Set(); // 勾选要批量上架的物品 id
+let AUTH = {logged_in:false};
+let pollTimer = null;     // 自动登录轮询
+let APP_SETTINGS = {my_trade_link:"", inventory_appid:730};
+
+const fmt = n => (n==null||isNaN(n)) ? "—" : "¥"+Number(n).toFixed(2);
+const toLocalInput = sec => { if(!sec) return ""; const d=new Date(sec*1000);
+  const p=x=>String(x).padStart(2,"0");
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
+const fromLocalInput = v => v ? Math.floor(new Date(v).getTime()/1000) : null;
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function gameOptionsHTML(sel){
+  return (CFG.games||[]).map(g=>`<option value="${g.appid}" ${(+sel===+g.appid)?'selected':''}>${esc(g.name)}</option>`).join("");
+}
+function gameName(appid){ const g=(CFG.games||[]).find(x=>+x.appid===+appid); return g?g.name:('appid '+appid); }
+
+/* ---------------- toast ---------------- */
+function toast(title, body, kind){
+  const d=document.createElement("div");
+  d.className="toast "+(kind||"");
+  d.innerHTML=`<div class="tt">${esc(title)}</div>`+(body?`<div class="tb">${esc(body)}</div>`:"");
+  $("#toasts").appendChild(d);
+  setTimeout(()=>{ d.style.transition="opacity .3s"; d.style.opacity="0";
+    setTimeout(()=>d.remove(),300); }, kind==="err"?6000:3500);
+}
+
+/* ---------------- modal ---------------- */
+function openModal(title, bodyHTML, actions){
+  closeModal();
+  const ov=document.createElement("div"); ov.className="overlay"; ov.id="ov";
+  const acts=(actions||[]).map((a,i)=>`<button class="btn ${a.cls||'ghost'}" data-i="${i}" ${a.disabled?'disabled':''}>${esc(a.label)}</button>`).join("");
+  ov.innerHTML=`<div class="modal"><h3>${esc(title)}</h3><div class="body">${bodyHTML}</div><div class="actions">${acts}</div></div>`;
+  $("#modalRoot").appendChild(ov);
+  ov.addEventListener("click",e=>{ if(e.target===ov) closeModal(); });
+  (actions||[]).forEach((a,i)=>{ ov.querySelector(`[data-i="${i}"]`).addEventListener("click",()=>a.on&&a.on()); });
+  return ov;
+}
+function closeModal(){ if(pollTimer){clearInterval(pollTimer);pollTimer=null;} const o=$("#ov"); if(o)o.remove(); }
+document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeModal(); });
+
+/* ---------------- config / banner ---------------- */
+async function loadConfig(){
+  try{ CFG = Object.assign(CFG, await (await fetch("/api/config")).json()); }catch(e){}
+  const ag=$("#addGame"); if(ag) ag.innerHTML=gameOptionsHTML(+ag.value||730);   // 填游戏下拉
+  const sig=$("#set_inv_game"); if(sig) sig.innerHTML=gameOptionsHTML(APP_SETTINGS.inventory_appid||730);
+  const b = $("#banner");
+  const trade = CFG.enable_trade
+    ? "「送出」已开启：点送出会把物品<b>真的发到交易链接</b>，核对清楚再发。"
+    : "「送出」未开启：点了只校验链接、不会真发。";
+  if(CFG.auto_list){ b.className="banner armed";
+    b.innerHTML="⚠️ 定时自动上架已开启：到点会<b>自动挂单</b>（仍需你手机确认）。 "+trade; }
+  else { b.className="banner";
+    b.innerHTML="定时到点<b>仅标记“到点待挂”</b>（自动上架未开启）。手动点「上架」或「批量上架」即可挂单。 "+trade; }
+}
+
+/* ---------------- items ---------------- */
+function hasActiveEditor(){
+  const el=document.activeElement;
+  return !!(editing || (el && el.matches && el.matches("input:not([type=checkbox]):focus,textarea:focus,select:focus")));
+}
+async function load(force=false){
+  // 编辑期间禁止任何请求结果重绘表格；这是防止金额输入焦点被抢走的最后一道闸。
+  if(!force && hasActiveEditor()) return true;
+  let items;
+  try{ items = await (await fetch("/api/items")).json(); }
+  catch(e){ setLive(false,"后端没连上"); return false; }
+  setLive(true);
+  state = items;
+  // 清掉已不存在的勾选
+  const ids=new Set(state.map(x=>x.id));
+  selected.forEach(id=>{ if(!ids.has(id)) selected.delete(id); });
+  render();
+  return true;
+}
+
+function setLive(ok,msg){
+  const d=$("#dot"); d.className = "dot"+(ok?" on":"");
+  setTimeout(()=>{ if(ok) d.className="dot on"; },10);
+  $("#livetxt").textContent = msg || ("实时 · 币种 "+(CFG.currency===23?"CNY":CFG.currency));
+}
+
+function summary(){
+  let net=0, profit=0;
+  state.forEach(it=>{ const q=+it.qty||1; net+=(it.net||0)*q; profit+=(it.profit||0)*q; });
+  $("#s-count").textContent = state.length;
+  $("#s-net").textContent = fmt(net);
+  const p=$("#s-profit"); p.textContent=(profit>=0?"+":"")+fmt(profit);
+  p.className = "v "+(profit>0?"up":profit<0?"down":"");
+}
+
+function priceCells(it){
+  // 上架价始终可直接填写；购入价只影响盈亏展示，不影响上架。
+  const hasTarget=(+it.listing_price||0)>0 || (+it.purchase||0)>0;
+  const hasCost=it.purchase!==null && it.purchase!==undefined && it.purchase!=="" && Number.isFinite(+it.purchase) && +it.purchase>=0;
+  const zeroCost=hasCost && +it.purchase===0;
+  const profitCls = hasCost?(it.profit>0?"up":it.profit<0?"down":"dim"):"dim";
+  return {
+    listing:`<input class="num" type="text" inputmode="decimal" value="${it.listing_price||''}" data-k="listing_price" placeholder="${Number(it.listing||0).toFixed(2)}" title="直接填写买家看到的价格；留空则按购入价和余额折扣自动计算">`,
+    net:hasTarget?fmt(it.net):`<span class="need">填上架价</span>`,
+    profit:hasCost?`${it.profit>=0?'+':''}${fmt(it.profit)}<span class="sub ${profitCls}">${zeroCost?'游戏掉落 · 零成本':`${it.profit>=0?'+':''}${it.profit_pct}%`}</span>`:`<span class="dim">未填成本</span>`,
+    profitCls,
+  };
+}
+
+function render(){
+  if(hasActiveEditor()) return;
+  const tb=$("#rows"); tb.innerHTML="";
+  $("#empty").style.display = state.length? "none":"block";
+  for(const it of state){
+    const priceErr = it.price_error;
+    const lowest = it.lowest!=null ? `<span class="price">${fmt(it.lowest)}</span>`
+      : `<span class="dim">${priceErr==='rate_limited'?'限流中':priceErr?'无数据':'…'}</span>`;
+    const vol = it.volume? `<span class="sub">日成交 ${it.volume}${it.median!=null?' · 中位 '+fmt(it.median):''}</span>`:"";
+    const pc = priceCells(it);
+    const listLocked=it.status==="listed"||it.status==="pending"||(+it.steam_listing_count||0)>0;
+
+    const tr=document.createElement("tr");
+    tr.dataset.id=it.id;
+    if(selected.has(it.id)) tr.className="sel";
+    tr.innerHTML = `
+      <td class="c"><input type="checkbox" class="rowchk" data-id="${it.id}" ${selected.has(it.id)?'checked':''}></td>
+      <td><select class="gsel" data-k="appid">${gameOptionsHTML(it.appid||730)}</select></td>
+      <td class="l"><input class="name" value="${esc(it.name)}" data-k="name">${vol}</td>
+      <td><input class="num" type="number" step="1" min="1" value="${it.operation_qty||1}" data-k="operation_qty" style="width:46px">
+        <span class="sub">总 ${(+it.steam_inventory_count||0)+(+it.steam_listing_count||0)+(+it.steam_pending_count||0)}</span>
+        ${(it.steam_sync_ts?`<span class="sub">库 ${it.steam_inventory_count||0} · 架 ${it.steam_listing_count||0} · 待 ${it.steam_pending_count||0}</span>`:'')}</td>
+      <td>${lowest}</td>
+      <td><input class="num" type="number" step="0.01" value="${it.purchase}" data-k="purchase"></td>
+      <td><input class="num markup-input" type="number" step="0.1" value="${it.balance_discount!=null?it.balance_discount:it.markup}" data-k="markup"></td>
+      <td class="cell-listing">${pc.listing}</td>
+      <td><input class="num" type="number" step="0.1" value="${it.fee}" data-k="fee"></td>
+      <td class="net cell-net">${pc.net}</td>
+      <td class="cell-profit ${pc.profitCls}">${pc.profit}</td>
+      <td class="l"><input class="dt" type="datetime-local" value="${toLocalInput(it.sell_at)}" data-k="sell_at">
+          <span class="cd" data-cd="${it.id}"></span></td>
+      <td class="l"><span class="badge ${it.status}">${statusText(it.status)}</span>
+          ${it.last_msg?`<div class="msg">${esc(it.last_msg)}</div>`:''}</td>
+      <td class="l"><input class="tl" value="${esc(it.trade_url||'')}" data-k="trade_url" placeholder="收货 交易链接">
+          <span class="tlhint" data-tl="${it.id}"></span></td>
+      <td class="act">
+          <button class="iconbtn sell" data-act="list" ${listLocked?'disabled title="已挂出/待确认，需先下架并同步"':''}>${listLocked?'已挂出':'上架'}</button>
+          <button class="iconbtn send" data-act="send">送出</button>
+          <button class="iconbtn del" data-act="del">删</button></td>`;
+    tb.appendChild(tr);
+  }
+  summary();
+  tickCountdowns();
+  updateTLHints();
+  updateBatchUI();
+}
+
+function statusText(s){return {watching:"盯价中",scheduled:"已定时",due:"到点待挂",pending:"待手机确认",listed:"已挂出",sent:"已发出",error:"出错"}[s]||s;}
+
+function tickCountdowns(){
+  for(const it of state){
+    const el=document.querySelector(`[data-cd="${it.id}"]`);
+    if(!el) continue;
+    if(it.status==="scheduled" && it.sell_at){
+      let s=Math.floor(it.sell_at-Date.now()/1000);
+      if(s<=0){ el.textContent="⏱ 到点，处理中…"; continue; }
+      const d=Math.floor(s/86400);s%=86400;const h=Math.floor(s/3600);s%=3600;const m=Math.floor(s/60);
+      el.textContent=`⏱ ${d?d+'天':''}${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+    } else el.textContent="";
+  }
+}
+setInterval(tickCountdowns,1000);
+
+/* ---------------- 行内编辑（防抖 PUT） ---------------- */
+let timer=null;
+$("#rows").addEventListener("focusin",e=>{ if(e.target.dataset.k) editing=e.target; });
+$("#rows").addEventListener("focusout",e=>{
+  if(e.target.dataset.k==="listing_price") saveListingPriceInput(e.target);
+  setTimeout(()=>editing=null,200);
+});
+$("#rows").addEventListener("keydown",e=>{
+  if(e.target.dataset.k==="listing_price" && e.key==="Enter"){ e.preventDefault(); e.target.blur(); }
+});
+$("#rows").addEventListener("input",e=>{
+  const inp=e.target; if(!inp.dataset.k) return;
+  if(inp.tagName==="SELECT") return;            // 游戏下拉走下面的 change 事件
+  const id=inp.closest("tr").dataset.id, k=inp.dataset.k;
+  // 金额输入到“5.”时仍在编辑小数，不能提前保存成 5 或重绘输入框。
+  if(k==="listing_price" && /[.,]$/.test(inp.value.trim())){ clearTimeout(timer); return; }
+  let v = inp.type==="number"? parseFloat(inp.value||0) : inp.value;
+  if(k==="listing_price"){
+    const normalized=String(v).trim().replace(",",".");
+    if(normalized!=="" && !/^\d+(?:\.\d{0,2})?$/.test(normalized)) return;
+    v=normalized===""?0:parseFloat(normalized);
+  }
+  if(k==="sell_at") v = fromLocalInput(inp.value);
+  const it=state.find(x=>x.id===id); if(it){ it[k]=v; if(k==="markup") it.listing_price=0; recalc(it); patchRow(id,it); summary(); if(k==='trade_url') updateTLHints(); }
+  // 上架价只在失焦/Enter 时保存，输入过程中绝不重绘表格抢焦点。
+  if(k==="listing_price"){ clearTimeout(timer); return; }
+  clearTimeout(timer);
+  timer=setTimeout(()=>fetch(`/api/items/${id}`,{method:"PUT",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({[k]:v})}).then(r=>{ if(!r.ok) throw 0; return load(); })
+    .catch(()=>toast("保存失败","这条改动没存上，检查后端是否在运行","err")),600);
+});
+async function saveListingPriceInput(inp){
+  const tr=inp.closest("tr"); if(!tr) return;
+  const id=tr.dataset.id, raw=String(inp.value||"").trim().replace(",",".");
+  if(raw!=="" && !/^\d+(?:\.\d{1,2})?$/.test(raw)){
+    toast("价格格式不正确","请输入最多两位小数，例如 5.24","warn"); inp.focus(); return;
+  }
+  const value=raw===""?0:+raw;
+  try{
+    const r=await fetch(`/api/items/${id}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({listing_price:value})});
+    if(!r.ok) throw 0;
+    const updated=await r.json(), idx=state.findIndex(x=>x.id===id);
+    if(idx>=0) state[idx]=updated;
+    render();
+  }catch(_){ toast("保存失败","上架价没有保存，请检查后端","err"); }
+}
+function steamFees(net, fee){
+  const cents=Math.max(0,Math.round(net)), rate=Math.max(0,+fee||0), sr=Math.min(5,rate), gr=Math.max(0,rate-sr);
+  return (sr?Math.max(1,Math.floor(cents*sr/100)):0)+(gr?Math.max(1,Math.floor(cents*gr/100)):0);
+}
+function recalc(it){
+  const buy=+it.purchase||0, mk=+it.markup||0, fee=+it.fee||0;
+  let target,net;
+  if((+it.listing_price||0)>0){
+    target=Math.max(0,Math.round(+it.listing_price*100)); net=target;
+    while(net>0 && net+steamFees(net,fee)>target) net--;
+    if(buy>0&&net>0) it.markup=+(buy/(net/100)*100).toFixed(2);
+  }else if(buy>0&&mk>0){
+    net=Math.max(0,Math.round(buy*10000/mk)); target=net+steamFees(net,fee);
+  }else{
+    target=Math.max(0,Math.round(buy*100)); net=target;
+    while(net>0 && net+steamFees(net,fee)>target) net--;
+  }
+  it.net=net/100; it.listing=net?(net+steamFees(net,fee))/100:0;
+  it.profit=+(it.net-buy).toFixed(2);
+  it.profit_pct=buy?+(it.profit/buy*100).toFixed(2):0;
+}
+function patchRow(id,it){
+  const tr=document.querySelector(`tr[data-id="${id}"]`); if(!tr)return;
+  const pc=priceCells(it);
+  const lc=tr.querySelector(".cell-listing");
+  if(!lc.contains(document.activeElement)) lc.innerHTML=pc.listing;
+  const mk=tr.querySelector(".markup-input");
+  if(mk && mk!==document.activeElement) mk.value=it.markup;
+  tr.querySelector(".cell-net").innerHTML=pc.net;
+  const pcell=tr.querySelector(".cell-profit");
+  pcell.className="cell-profit "+pc.profitCls; pcell.innerHTML=pc.profit;
+}
+
+/* ---------------- 行内操作按钮 ---------------- */
+$("#rows").addEventListener("click",async e=>{
+  const btn=e.target.closest("button"); if(!btn) return;
+  const id=btn.closest("tr").dataset.id;
+  const it=state.find(x=>x.id===id);
+  if(btn.dataset.act==="del"){
+    if(!confirm("删除这条监控？")) return;
+    try{ const r=await fetch(`/api/items/${id}`,{method:"DELETE"}); if(!r.ok) throw 0;
+      toast("已删除", it&&it.name||"", "ok"); selected.delete(id); load(); }
+    catch(_){ toast("删除失败","后端没响应","err"); }
+  }
+  if(btn.dataset.act==="list"){
+    const suggested=+(it.listing_price||it.listing||it.lowest||0);
+    openModal("设置上架价", `
+      <p><b>${esc(it.name)}</b></p>
+      <p class="muted">Steam 最低价：${fmt(it.lowest)}。填写买家最终看到的价格，手续费会自动反算。</p>
+      <div class="f"><label>上架价 ¥（买家看到）</label>
+        <input class="big" id="singleListPrice" type="text" inputmode="decimal" value="${suggested?suggested.toFixed(2):''}" placeholder="例如 5.20" autofocus>
+      </div>
+      <p class="muted" id="singleListMsg" style="margin-top:8px"></p>`, [
+      {label:"取消",on:closeModal},
+      {label:"确认上架",cls:"go",on:()=>submitSingleList(id)},
+    ]);
+    const input=$("#singleListPrice"); input.focus();
+    input.addEventListener("keydown",ev=>{ if(ev.key==="Enter") submitSingleList(id); });
+  }
+  if(btn.dataset.act==="send"){
+    const {partner}=parseTL(it&&it.trade_url);
+    if(!partner){ toast("不能送出","先在这一行填一个有效的收货交易链接","warn"); return; }
+    if(!confirm(`确认把【${it.name}】发送给 partner=${partner}？\n物品一旦对方接受就不可撤回，发之前务必核对链接是谁的！`)) return;
+    const t=btn.textContent; btn.textContent="…"; btn.disabled=true;
+    try{
+      const r=await fetch(`/api/items/${id}/send`,{method:"POST"}); const j=await r.json();
+      if(j.ok) toast("已发出报价", j.msg||"", "ok"); else toast("送出未成功", j.msg||"失败", "err");
+    }catch(_){ toast("送出失败","后端没响应","err"); }
+    finally{ btn.textContent=t; btn.disabled=false; load(); }
+  }
+});
+
+// 新增区域同样支持“购入价 + 上架价 => 自动反推余额折扣”。
+for(const name of ["purchase","listing_price"]){
+  const el=$("#addForm").elements[name];
+  el.addEventListener("input",()=>{
+    const f=$("#addForm"), buy=+f.elements.purchase.value||0;
+    const listing=+String(f.elements.listing_price.value||"").replace(",",".")||0;
+    if(buy>0 && listing>0){
+      const fee=+f.elements.fee.value||0, target=Math.round(listing*100); let net=target;
+      while(net>0 && net+steamFees(net,fee)>target) net--;
+      if(net>0) f.elements.markup.value=+(buy/(net/100)*100).toFixed(2);
+    }
+  });
+}
+$("#addForm").elements.markup.addEventListener("input",()=>{
+  $("#addForm").elements.listing_price.value="";
+});
+
+async function submitSingleList(id){
+  const input=$("#singleListPrice"), msg=$("#singleListMsg");
+  const raw=String(input&&input.value||"").trim().replace(",",".");
+  if(!/^\d+(?:\.\d{1,2})?$/.test(raw)){ if(msg) msg.textContent="请输入正确金额，最多保留两位小数"; return; }
+  const price=+raw;
+  if(!price || price<0.03){ if(msg) msg.textContent="请输入有效上架价（最低 ¥0.03）"; return; }
+  const ov=$("#ov"), btn=ov&&ov.querySelector('.actions [data-i="1"]');
+  if(btn){ btn.disabled=true; btn.innerHTML='<span class="spin"></span>上架中…'; }
+  if(input) input.disabled=true;
+  try{
+    const saved=await fetch(`/api/items/${id}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({listing_price:price})});
+    if(!saved.ok) throw new Error("上架价保存失败");
+    const r=await fetch(`/api/items/${id}/list_now`,{method:"POST"});
+    const j=await r.json();
+    closeModal();
+    if(j.ok) toast("上架请求已发出",j.msg||`买家价 ${fmt(price)}`,"ok");
+    else if(j.listed_count>0) toast(`部分成功：已上架 ${j.listed_count} 件`,j.msg||`剩余 ${j.remaining_count} 件可重试`,"warn");
+    else toast("上架未成功",j.msg||"失败","err");
+  }catch(err){
+    if(msg) msg.textContent="× "+(err.message||"后端没响应");
+    if(btn){ btn.disabled=false; btn.textContent="确认上架"; }
+    if(input) input.disabled=false;
+  }
+  load();
+}
+
+/* ---------------- 添加物品（修好：可见反馈，不再静默） ---------------- */
+$("#addForm").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const f=e.target;
+  const g=n=>f.elements[n];                 // 用 elements 取值，避开 form.name 这个坑
+  const btn=f.querySelector("button[type=submit]"); const t=btn?btn.textContent:"添加";
+  try{
+    const name=(g("name").value||"").trim();
+    if(!name){ toast("没加成功","物品英文名不能为空","warn"); return; }
+    const body={
+      name,
+      appid:parseInt(g("appid").value||730)||730,
+      qty:parseInt(g("qty").value||1)||1,
+      operation_qty:parseInt(g("qty").value||1)||1,
+      purchase:parseFloat(g("purchase").value||0)||0,
+      markup:parseFloat(g("markup").value||0)||0,
+      fee:parseFloat(g("fee").value||15)||0,
+      listing_price:parseFloat(g("listing_price").value||0)||0,
+      sell_at:fromLocalInput(g("sell_at").value),
+    };
+    if(btn){ btn.textContent="添加中…"; btn.disabled=true; }
+    const r=await fetch("/api/items",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    if(!r.ok){ const j=await r.json().catch(()=>({})); throw new Error(j.error||("HTTP "+r.status)); }
+    g("name").value=""; g("purchase").value=""; g("listing_price").value=""; g("sell_at").value="";   // 成功才清空
+    await load();
+    if(!body.purchase && !body.listing_price) toast("已加入监控", name+"：在表格的上架价一栏直接填价格即可上架", "warn");
+    else toast("已加入监控", name, "ok");
+  }catch(err){
+    toast("添加失败", (""+(err&&err.message)).includes("Failed to fetch")
+      ? "连不上后端。请用「启动倒货台.bat」启动，并确认浏览器开的是 http://127.0.0.1:8777"
+      : ("原因："+(err&&err.message)), "err");
+  }finally{ if(btn){ btn.textContent=t; btn.disabled=false; } }
+});
+
+/* ---------------- 批量勾选 + 批量上架 ---------------- */
+$("#rows").addEventListener("change",e=>{
+  if(e.target.classList.contains("rowchk")){
+    const id=e.target.dataset.id;
+    if(e.target.checked) selected.add(id); else selected.delete(id);
+    e.target.closest("tr").classList.toggle("sel", e.target.checked);
+    updateBatchUI();
+    return;
+  }
+  if(e.target.classList.contains("gsel")){            // 切换游戏 -> 存后端 + 重拉(换游戏的价格/库存)
+    const id=e.target.closest("tr").dataset.id, ap=+e.target.value;
+    const it=state.find(x=>x.id===id); if(it) it.appid=ap;
+    fetch(`/api/items/${id}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({appid:ap})})
+      .then(r=>{ if(!r.ok) throw 0; toast("已切换游戏", gameName(ap)+(it?(" · "+it.name):""), "ok"); return load(); })
+      .catch(()=>toast("切换失败","游戏没改上，后端没响应","err"));
+  }
+});
+$("#chkAll").addEventListener("change",e=>{
+  if(e.target.checked) state.forEach(it=>selected.add(it.id)); else selected.clear();
+  render();
+});
+function updateBatchUI(){
+  const n=selected.size;
+  $("#btnBatch").textContent=`批量上架 (${n})`;
+  $("#btnBatch").disabled = n===0;
+  $("#btnListConfirm").textContent=`上架并确认 (${n})`;
+  $("#btnListConfirm").disabled = n===0;
+  $("#btnConfirmOnly").textContent=`批量确认 (${n})`;
+  $("#btnConfirmOnly").disabled = n===0;
+  $("#btnCleanupPending").textContent=`清理待确认 (${n})`;
+  $("#btnCleanupPending").disabled = n===0;
+  $("#btnSetPrice").textContent=`批量设价 (${n})`;
+  $("#btnSetPrice").disabled = n===0;
+  $("#btnDelist").textContent=`批量下架 (${n}种)`;
+  $("#btnDelist").disabled = n===0;
+  const all=state.length>0 && state.every(it=>selected.has(it.id));
+  const chkAll=$("#chkAll"); chkAll.checked=all; chkAll.indeterminate = n>0 && !all;
+}
+$("#btnBatch").addEventListener("click",()=>{
+  const items=state.filter(it=>selected.has(it.id));
+  if(!items.length) return;
+  if(!AUTH.logged_in){ toast("需要先登录 Steam","点上面「账号密码登录」或「粘贴 Cookie 登录」","warn"); return; }
+  const locked=items.filter(it=>it.status==="listed"||it.status==="pending"||(+it.steam_listing_count||0)>0);
+  const priced=items.filter(it=>+it.net>0 && !locked.includes(it));
+  const noPrice=items.filter(it=>!it.net||+it.net<=0);
+  let total=0, listN=0;
+  priced.forEach(it=>{ const q=+it.operation_qty||1; total+=(it.net||0)*q; listN+=q; });
+  const rows=items.map(it=>{ const q=+it.operation_qty||1;
+    return `<li><span class="bn">${esc(it.name)}${q>1?' ×'+q:''}</span>`+
+     (+it.net>0
+       ? `<span class="bp">买家 ${fmt(it.listing)} · 到手 ${fmt(it.net)}${q>1?' ×'+q+' = '+fmt((it.net||0)*q):''}</span>`
+       : `<span class="need">没填有效上架价，跳过</span>`)+`</li>`;
+  }).join("");
+  const body=`<p class="muted">按各自“到手价”挂到 Steam 市场，共 <b>${listN}</b> 个单；每个单独挂、到你 <b>Steam 手机令牌</b> 里<b>逐笔确认</b>（本工具不自动确认）。</p>
+    <ul class="blist">${rows}</ul>
+    <div class="btotal"><span>合计到手（${listN} 个单）</span><span class="bp">${fmt(total)}</span></div>
+    ${noPrice.length?`<p class="muted" style="margin-top:8px;color:var(--warn)">有 ${noPrice.length} 件没有有效上架价，会被跳过。</p>`:""}
+    ${locked.length?`<p class="muted" style="margin-top:8px;color:var(--warn)">有 ${locked.length} 种已经挂出或待确认，将跳过。</p>`:""}`;
+  openModal(`确认批量上架 ${listN} 件`, body, [
+    {label:"取消", on:closeModal},
+    {label:"确认上架", cls:"go", on:()=>confirmBatch(priced.map(it=>it.id))},
+  ]);
+});
+async function confirmBatch(ids){
+  if(!ids.length){ closeModal(); toast("没有可上架的","选中的都没填购入价","warn"); return; }
+  const ov=$("#ov"); const btn=ov&&ov.querySelector('[data-i="1"]');
+  if(btn){ btn.disabled=true; btn.innerHTML='<span class="spin"></span>上架中…'; }
+  try{
+    const j=await runBackgroundJob("list",ids,btn,"上架中");
+    closeModal();
+    const okN=j.ok_count, tot=j.total, listed=+j.listed_items||0, remain=+j.remaining_items||0;
+    toast(`批量上架：成功 ${listed} 件${remain?`，剩余 ${remain} 件`:''}`, listed>0?"剩余数量已自动保留，可直接再次上架":"都没成功，看下面每条原因", listed>0?(remain?"warn":"ok"):"err");
+    (j.results||[]).filter(x=>!x.ok).forEach(x=>toast("× "+x.name, x.msg, "err"));
+    selected.clear(); load();
+  }catch(err){
+    closeModal(); toast("批量上架失败",err.message||"后端没响应","err");
+  }
+}
+async function runBackgroundJob(action,ids,btn,label){
+  const r=await fetch("/api/jobs",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action,ids})});
+  const created=await r.json(); if(!r.ok) throw new Error(created.error||"任务创建失败");
+  while(true){
+    await new Promise(resolve=>setTimeout(resolve,700));
+    const jr=await fetch(`/api/jobs/${created.id}`), job=await jr.json();
+    if(btn) btn.innerHTML=`<span class="spin"></span>${label} ${job.progress||0}/${job.total||ids.length}`;
+    if(job.status==="completed") return job.result;
+    if(job.status==="failed") throw new Error(job.error||"后台任务失败");
+  }
+}
+
+$("#btnListConfirm").addEventListener("click",()=>{
+  const items=state.filter(it=>selected.has(it.id) && +it.net>0 && it.status!=="listed" && it.status!=="pending" && !(+it.steam_listing_count||0));
+  if(!items.length){ toast("没有可上架物品","先填写上架价","warn"); return; }
+  openModal("上架并批量确认",`<p>将上架所选物品，并使用账号设置中的 maFile 自动确认本次市场出售。</p>
+    <p class="muted">只确认本次上架返回的市场挂单编号，不会确认交易报价。令牌文件必须包含 identity_secret 和 device_id。</p>`,[
+    {label:"取消",on:closeModal},
+    {label:"确认执行",cls:"go",on:()=>runListConfirmFlow(items.map(x=>x.id))},
+  ]);
+});
+async function runListConfirmFlow(ids){
+  const ov=$("#ov"), btn=ov&&ov.querySelector('.actions [data-i="1"]');
+  if(btn){ btn.disabled=true; btn.innerHTML='<span class="spin"></span>正在上架…'; }
+  try{
+    const lr=await fetch("/api/list_batch",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ids})});
+    const lj=await lr.json();
+    if(!lr.ok || lj.error) throw new Error(lj.error||"批量上架失败");
+    if(btn) btn.innerHTML='<span class="spin"></span>等待确认同步…';
+    await new Promise(resolve=>setTimeout(resolve,3000));
+    const cr=await fetch("/api/confirm_market_batch",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ids})});
+    const cj=await cr.json();
+    closeModal();
+    if(!cr.ok || cj.error) toast(`已上架 ${lj.listed_items||0} 件，自动确认失败`,cj.error||"请到手机确认","warn");
+    else toast(`流程完成：上架 ${lj.listed_items||0} 件，确认 ${cj.confirmed||0} 条`,cj.msg||"",cj.pending?"warn":"ok");
+    selected.clear(); load();
+  }catch(err){ closeModal(); toast("上架确认流程失败",err.message||"后端没响应","err"); }
+}
+$("#btnConfirmOnly").addEventListener("click",async ()=>{
+  const ids=state.filter(it=>selected.has(it.id)).map(it=>it.id);
+  if(!ids.length) return;
+  openModal("确认批量确认",`<p>只确认所选物品中由本工具记录的待确认市场出售，不处理交易报价。</p>`,[
+    {label:"取消",on:closeModal},
+    {label:"确认执行",cls:"go",on:()=>confirmPendingOnly(ids)},
+  ]);
+});
+async function confirmPendingOnly(ids){
+  const ov=$("#ov"), btn=ov&&ov.querySelector('.actions [data-i="1"]');
+  if(btn){ btn.disabled=true; btn.innerHTML='<span class="spin"></span>确认中…'; }
+  try{
+    const r=await fetch("/api/confirm_market_batch",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ids})});
+    const j=await r.json(); closeModal();
+    if(!r.ok || j.error) toast("批量确认失败",j.error||"失败","err");
+    else toast(`批量确认：成功 ${j.confirmed||0} 条`,j.msg||"",j.pending?"warn":"ok");
+    load();
+  }catch(_){ closeModal(); toast("批量确认失败","后端没响应","err"); }
+}
+$("#btnCleanupPending").addEventListener("click",()=>{
+  const ids=state.filter(it=>selected.has(it.id)).map(it=>it.id);
+  if(!ids.length) return;
+  openModal("清理被吞的待确认",`<p>将检测所选物品中未出现在正式挂单页面、但仍被 Steam 保留的隐藏待确认记录，并尝试撤销。</p>
+    <p class="muted">不会撤下已经正式上架的物品。清理后物品回库存可能需要几分钟。</p>`,[
+    {label:"取消",on:closeModal},
+    {label:"检测并清理",cls:"go",on:()=>cleanupPending(ids)},
+  ]);
+});
+async function cleanupPending(ids){
+  const ov=$("#ov"), btn=ov&&ov.querySelector('.actions [data-i="1"]');
+  if(btn){ btn.disabled=true; btn.innerHTML='<span class="spin"></span>清理中…'; }
+  try{
+    const r=await fetch("/api/cleanup_pending_batch",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ids})});
+    const j=await r.json(); closeModal();
+    if(!r.ok || j.error) toast("清理失败",j.error||"失败","err");
+    else toast(`发现 ${j.found} 条，清理 ${j.removed} 条`,j.removed?"等待回库后重新加载库存":"没有发现被吞的待确认记录",j.errors&&j.errors.length?"warn":"ok");
+    load();
+  }catch(_){ closeModal(); toast("清理失败","后端没响应","err"); }
+}
+
+$("#btnDelist").addEventListener("click",async ()=>{
+  const items=state.filter(it=>selected.has(it.id));
+  if(!items.length) return;
+  const ids=items.map(x=>x.id);
+  openModal("读取实际挂单…",`<p class="muted"><span class="spin"></span> 正在从 Steam 市场读取正式挂单数量，不使用表格库存数量猜测。</p>`,[]);
+  let j;
+  try{
+    const r=await fetch("/api/delist_preview",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ids})});
+    j=await r.json();
+    if(!r.ok || j.error) throw new Error(j.error||"读取失败");
+  }catch(err){ closeModal(); toast("读取挂单失败",err.message||"后端没响应","err"); return; }
+  const rows=(j.rows||[]).map(x=>`<li>${esc(x.name)}：<b>${x.count}</b> 件正式挂单</li>`).join("");
+  openModal("确认批量下架",`<p>Steam 当前实际找到 <b>${j.count}</b> 个正式挂单：</p><ul>${rows}</ul>
+    <p class="muted">例如上架 64 件但成功 63 件，这里会按实际的 63 件下架。待确认记录不计入正式挂单。</p>`,[
+    {label:"取消",on:closeModal},
+    {label:`确认下架 ${j.count} 件`,cls:"go",disabled:!j.count,on:()=>confirmDelist(ids)},
+  ]);
+});
+async function confirmDelist(ids){
+  const ov=$("#ov"), btn=ov&&ov.querySelector('.actions [data-i="1"]');
+  if(btn){ btn.disabled=true; btn.innerHTML='<span class="spin"></span>下架中…'; }
+  try{
+    const j=await runBackgroundJob("delist",ids,btn,"下架中");
+    closeModal();
+    const found=(j.results||[]).reduce((n,x)=>n+(+x.found||0),0), failed=Math.max(0,found-(+j.removed||0));
+    toast(`批量下架：成功 ${j.removed} 件${failed?`，失败 ${failed} 件`:''}`,j.removed?"物品返回库存可能需要短暂等待":"没有找到匹配的正式挂单",failed?"warn":(j.removed?"ok":"warn"));
+    (j.results||[]).filter(x=>(+x.removed||0)<(+x.found||0)).forEach(x=>toast(x.name,x.msg,"warn"));
+    selected.clear(); load();
+  }catch(err){ closeModal(); toast("批量下架失败",err.message||"后端没响应","err"); }
+}
+
+/* ---------------- 批量设价（购入/余额折扣/手续费） ---------------- */
+$("#btnSetPrice").addEventListener("click",()=>{
+  const ids=state.filter(it=>selected.has(it.id)).map(it=>it.id);
+  if(!ids.length) return;
+  const body=`<p class="muted">给选中的 <b>${ids.length}</b> 件统一设置（留空 = 不改这项）：</p>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;">
+      <div class="f2"><label>购入价 ¥</label><input id="bsBuy" type="number" step="0.01" min="0" placeholder="不改"></div>
+      <div class="f2"><label>余额折扣 %</label><input id="bsMk" type="number" step="0.1" placeholder="不改"></div>
+      <div class="f2"><label>上架价 ¥（买家看到）</label><input id="bsList" type="text" inputmode="decimal" placeholder="不改；填 0 恢复自动"></div>
+      <div class="f2"><label>手续费 %</label><input id="bsFee" type="number" step="0.1" placeholder="不改"></div>
+    </div>`;
+  openModal(`批量设价 · ${ids.length} 件`, body, [
+    {label:"取消", on:closeModal},
+    {label:"应用", cls:"go", on:()=>applyBatchPrice(ids)},
+  ]);
+});
+async function applyBatchPrice(ids){
+  const pick=id=>{ const el=document.getElementById(id); const v=(el&&el.value||"").trim(); return v===""?null:parseFloat(v); };
+  const patch={};
+  const buy=pick("bsBuy"), mk=pick("bsMk"), list=pick("bsList"), fee=pick("bsFee");
+  if(buy!=null && !isNaN(buy)) patch.purchase=buy;
+  if(mk!=null && !isNaN(mk)) patch.markup=mk;
+  if(list!=null && !isNaN(list)) patch.listing_price=list;
+  if(fee!=null && !isNaN(fee)) patch.fee=fee;
+  if(!Object.keys(patch).length){ toast("没填","至少填一项再点应用","warn"); return; }
+  const ov=$("#ov"); const btn=ov&&ov.querySelector('.actions [data-i="1"]');
+  if(btn){ btn.disabled=true; btn.innerHTML='<span class="spin"></span>应用中…'; }
+  let n=0;
+  for(const id of ids){
+    try{ const r=await fetch(`/api/items/${id}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(patch)}); if(r.ok) n++; }catch(e){}
+  }
+  const what=Object.keys(patch).map(k=>({purchase:"购入",markup:"余额折扣",listing_price:"上架价",fee:"手续费"}[k])).join("/");
+  closeModal(); toast("已批量设价",`${n} 件 · 改了 ${what}`,"ok"); load();
+}
+
+/* ---------------- 从 Steam 库存选择 ---------------- */
+let INV_ITEMS=[];
+$("#btnInv").addEventListener("click",openInventoryPicker);
+function openInventoryPicker(){
+  if(!AUTH.logged_in || !AUTH.steamid){ toast("先登录 Steam","登录一次拿到你的 steamid，才能拉库存","warn"); return; }
+  const body=`
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+      <select id="invGame">${gameOptionsHTML(APP_SETTINGS.inventory_appid||730)}</select>
+      <button class="btn sm" id="invLoad" type="button">加载库存</button>
+      <button class="btn ghost sm" id="invDefault" type="button">设为默认游戏</button>
+      <button class="btn ghost sm" id="invAll" type="button">全选 / 全不选</button>
+      <input id="invSearch" type="search" placeholder="搜索物品名称" style="min-width:180px;flex:1">
+      <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:5px;cursor:pointer;">
+        <input type="checkbox" id="invOnlyM" checked> 只看可上架</label>
+      <span id="invMsg" class="muted" style="font-size:12px;"></span>
+    </div>
+    <div id="invList" style="max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:8px;"><div style="padding:20px;color:var(--muted);text-align:center">选择游戏后点击“加载库存”</div></div>
+    <p class="muted" id="invSel" style="font-size:12px;margin:8px 0 0"></p>`;
+  const ov=openModal("从 Steam 库存选择",body,[
+    {label:"取消",on:closeModal},
+    {label:"加入监控表",cls:"go",on:invAddSelected},
+  ]);
+  ov.querySelector("#invLoad").addEventListener("click",invLoad);
+  ov.querySelector("#invOnlyM").addEventListener("change",renderInvList);
+  ov.querySelector("#invSearch").addEventListener("input",renderInvList);
+  ov.querySelector("#invDefault").addEventListener("click",saveDefaultInventoryGame);
+  ov.querySelector("#invAll").addEventListener("click",()=>{
+    const boxes=[...ov.querySelectorAll(".invchk")];
+    const allOn=boxes.length>0 && boxes.every(b=>b.checked);
+    boxes.forEach(b=>{ b.checked=!allOn; });
+    invSelCount();
+  });
+  ov.querySelector("#invList").addEventListener("change",e=>{ if(e.target.classList.contains("invchk")) invSelCount(); });
+}
+async function saveDefaultInventoryGame(){
+  const ov=$("#ov"); if(!ov) return;
+  const appid=+ov.querySelector("#invGame").value;
+  try{
+    const r=await fetch("/api/settings",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({inventory_appid:appid})});
+    if(!r.ok) throw 0;
+    APP_SETTINGS.inventory_appid=appid;
+    toast("默认库存游戏已保存",gameName(appid),"ok");
+  }catch(_){ toast("保存失败","后端没响应","err"); }
+}
+async function invLoad(){
+  const ov=$("#ov"); if(!ov) return;
+  const appid=+ov.querySelector("#invGame").value;
+  const msg=ov.querySelector("#invMsg"), list=ov.querySelector("#invList");
+  msg.innerHTML='<span class="spin"></span>拉取中…'; list.innerHTML=""; INV_ITEMS=[];
+  try{
+    const r=await fetch("/api/inventory?appid="+appid);
+    const j=await r.json();
+    if(j.error){ msg.innerHTML="✗ "+esc(j.error==="need_auth"?"会话失效，请重新登录":j.error); return; }
+    INV_ITEMS=j.items||[];
+    const m=INV_ITEMS.filter(x=>x.marketable).length;
+    const copies=INV_ITEMS.reduce((n,x)=>n+(+x.count||0),0);
+    const canCopies=INV_ITEMS.filter(x=>x.marketable).reduce((n,x)=>n+(+x.count||0),0);
+    const base=`${j.game}：${j.count} 种 / ${copies} 件 · 可上架 ${m} 种 / ${canCopies} 件`;
+    if(j.session_valid===false)
+      msg.innerHTML=`<span style="color:var(--warn)">${esc(base)} · ⚠️ 会话过期，库存不全（受保护/私密的没拉到），请重新登录后再加载</span>`;
+    else msg.textContent=base;
+    renderInvList();
+  }catch(e){ msg.textContent="后端没响应"; }
+}
+function renderInvList(){
+  const ov=$("#ov"); if(!ov) return;
+  const onlyM=ov.querySelector("#invOnlyM").checked;
+  const q=(ov.querySelector("#invSearch").value||"").trim().toLowerCase();
+  const rows=INV_ITEMS.map((it,i)=>({it,i})).filter(x=>(!onlyM||x.it.marketable)&&(!q||(x.it.name||x.it.market_hash_name||"").toLowerCase().includes(q)));
+  const list=ov.querySelector("#invList");
+  if(!rows.length){ list.innerHTML='<div style="padding:16px;color:var(--muted)">没有可显示的物品（库存私密/为空，或没有可上架的）</div>'; return; }
+  list.innerHTML=rows.map(({it,i})=>{
+    const can=it.marketable;
+    const icon=it.icon?`<img src="https://community.cloudflare.steamstatic.com/economy/image/${it.icon}/40x40" width="32" height="32" style="border-radius:4px;background:#1d2937;flex:none" loading="lazy" alt="">`:'';
+    // 受保护/暂不可上架的也能勾（预先加入，等解除保护再挂）
+    return `<label style="display:flex;align-items:center;gap:10px;padding:7px 12px;border-bottom:1px solid var(--line);cursor:pointer;${can?'':'opacity:.75'}">
+      <input type="checkbox" class="invchk" data-idx="${i}">${icon}
+      <span style="flex:1;font-size:13px;">${esc(it.name)}${it.count>1?` <span style="color:var(--muted)">×${it.count}</span>`:''}</span>
+      ${can?'':'<span class="need" title="现在挂不了，加进来等交易保护解除/可售时再上架">暂不可上架·受保护</span>'}
+    </label>`;
+  }).join("");
+  invSelCount();
+}
+function invSelCount(){
+  const ov=$("#ov"); if(!ov) return;
+  const n=ov.querySelectorAll(".invchk:checked").length;
+  const el=ov.querySelector("#invSel");
+  if(el) el.textContent = n ? `已选 ${n} 种（勾“×N”的会按数量挂 N 个单）` : "";
+}
+async function invAddSelected(){
+  const ov=$("#ov"); if(!ov) return;
+  const appid=+ov.querySelector("#invGame").value;
+  const checks=[...ov.querySelectorAll(".invchk:checked")];
+  if(!checks.length){ toast("没选物品","勾选要加入的物品再点","warn"); return; }
+  const btn=ov.querySelector('.actions [data-i="1"]');
+  if(btn){ btn.disabled=true; btn.innerHTML='<span class="spin"></span>加入中…'; }
+  let n=0;
+  for(const c of checks){
+    const it=INV_ITEMS[+c.dataset.idx]; if(!it) continue;
+    try{ const r=await fetch("/api/items",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({name:it.market_hash_name, appid, qty:it.count})}); if(r.ok) n++; }catch(e){}
+  }
+  closeModal(); toast("已加入监控表",`${n} 种 · 直接填写上架价即可`,"ok"); load();
+}
+
+/* ---------------- 核对挂单状态 ---------------- */
+$("#btnRecheck").addEventListener("click",async ()=>{
+  const btn=$("#btnRecheck"); const t=btn.textContent; btn.textContent="核对中…"; btn.disabled=true;
+  try{
+    const r=await fetch("/api/listings_status",{method:"POST"});
+    if(r.status===401){ toast("需要登录","会话失效，先登录再核对挂单","warn"); return; }
+    const j=await r.json();
+    if(j.error){ toast("核对失败", j.error, "err"); return; }
+    if(j.msg){ toast("核对挂单", j.msg, "warn"); }
+    else toast("核对完成", `查了 ${j.checked} 条；其中 ${j.back} 条又回到库存（已取消/没挂出）`, j.back?"warn":"ok");
+    load();
+  }catch(_){ toast("核对失败","后端没响应","err"); }
+  finally{ btn.textContent=t; btn.disabled=false; }
+});
+
+/* ---------------- 通知 ---------------- */
+let lastStatus={};
+function checkNotify(){
+  for(const it of state){
+    const prev=lastStatus[it.id];
+    if(prev && prev!==it.status && (it.status==="listed"||it.status==="due")){
+      if(window.Notification && Notification.permission==="granted")
+        new Notification("倒货台",{body:`${it.name} → ${statusText(it.status)}`});
+    }
+    lastStatus[it.id]=it.status;
+  }
+}
+if(window.Notification && Notification.permission==="default") Notification.requestPermission();
+
+let lastSteamSync=0, steamSyncing=false;
+async function syncSteam(silent=false){
+  if(steamSyncing || !AUTH.logged_in) return;
+  steamSyncing=true;
+  const btn=$("#btnSteamSync"), old=btn&&btn.textContent;
+  if(btn && !silent){ btn.disabled=true; btn.textContent="同步中…"; }
+  try{
+    const r=await fetch("/api/steam_sync",{method:"POST"});
+    const j=await r.json();
+    if(!r.ok || j.error) throw new Error(j.error==="need_auth"?"Steam 会话失效":(j.error||"同步失败"));
+    lastSteamSync=Date.now();
+    await load();
+    if(!silent) toast("Steam 同步完成",`${j.added?`新增 ${j.added} 种 · `:''}库存 ${j.inventory} · 在架 ${j.listed} · 待确认 ${j.pending}`,"ok");
+  }catch(err){ if(!silent) toast("Steam 同步失败",err.message||"后端没响应","err"); }
+  finally{ steamSyncing=false; if(btn){btn.disabled=false;btn.textContent=old||"同步 Steam";} }
+}
+$("#btnSteamSync").addEventListener("click",()=>syncSteam(false));
+$("#btnHistory").addEventListener("click",async ()=>{
+  try{
+    const rows=await (await fetch("/api/operations?limit=100")).json();
+    const names={batch_list:"批量上架",batch_delist:"批量下架"};
+    const html=rows.length?rows.map(x=>`<div style="padding:9px 0;border-bottom:1px solid var(--line)"><b>${esc(names[x.action]||x.action)}</b> · ${new Date(x.ts*1000).toLocaleString()}<span class="sub">${x.ok===false?'失败：'+esc(x.error||''):'完成'}${x.count?' · '+x.count+' 种':''}</span></div>`).join(""):'<p class="muted">暂无操作记录</p>';
+    openModal("操作记录",`<div style="max-height:55vh;overflow:auto">${html}</div>`,[{label:"关闭",on:closeModal}]);
+  }catch(_){ toast("读取失败","无法读取操作记录","err"); }
+});
+async function poll(){
+  if(editing) return; if($("#ov")) return;
+  await load();
+  if(AUTH.logged_in && Date.now()-lastSteamSync>60000) await syncSteam(true);
+  checkNotify();
+}
+
+/* ---------------- 交易链接 ---------------- */
+function parseTL(url){
+  const m=/^https:\/\/steamcommunity\.com\/tradeoffer\/new\/\?partner=(\d+)&token=([\w-]+)$/.exec((url||"").trim());
+  return m? {partner:m[1],token:m[2]} : {partner:null,token:null};
+}
+function updateTLHints(){
+  for(const it of state){
+    const el=document.querySelector(`[data-tl="${it.id}"]`); if(!el) continue;
+    if(!it.trade_url){ el.textContent=""; el.className="tlhint"; continue; }
+    const {partner}=parseTL(it.trade_url);
+    el.textContent = partner? ("✓ "+partner) : "✗ 格式错";
+    el.className = "tlhint "+(partner?"ok":"bad");
+  }
+}
+async function loadSettings(){
+  try{ const s=await (await fetch("/api/settings")).json();
+       APP_SETTINGS=Object.assign(APP_SETTINGS,s||{});
+       const sig=$("#set_inv_game"); if(sig){ sig.innerHTML=gameOptionsHTML(APP_SETTINGS.inventory_appid||730); sig.value=String(APP_SETTINGS.inventory_appid||730); }
+       $("#myTL").value=s.my_trade_link||""; validateMyTL(); }catch(e){}
+}
+function validateMyTL(){
+  const has=!!$("#myTL").value.trim(); const {partner}=parseTL($("#myTL").value);
+  const el=$("#myTLok");
+  el.textContent = has? (partner?"✓ 有效":"✗ 格式不对") : "";
+  el.className = "tlhint "+(has?(partner?"ok":"bad"):"");
+}
+let tlTimer=null;
+$("#myTL").addEventListener("input",()=>{ validateMyTL();
+  clearTimeout(tlTimer);
+  tlTimer=setTimeout(()=>fetch("/api/settings",{method:"PUT",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({my_trade_link:$("#myTL").value})}).catch(()=>{}),600); });
+$("#copyTL").addEventListener("click",()=>{ const v=$("#myTL").value.trim(); if(!v) return;
+  navigator.clipboard.writeText(v).then(()=>toast("已复制","粘到 IGXE/BUFF 即可","ok")); });
+
+/* ---------------- 账号设置 ---------------- */
+async function loadSecret(){
+  try{ const s=await (await fetch("/api/secret")).json();
+    $("#set_key").placeholder = s.has_api_key ? "已设置（留空不改）" : "未设置";
+    $("#set_user").value = s.steam_username||"";
+    $("#set_pass").placeholder = s.has_password ? "已设置（留空不改）" : "未设置";
+    $("#set_proxy").value = s.steam_proxy||"";
+    $("#set_insecure").checked = s.steam_ssl_verify===false;
+    $("#set_maf").value = s.steamguard_file||"steamguard.json";
+    $("#set_webpw").placeholder = s.has_web_password ? "已设密码（留空=不改）" : "留空=不设密码";
+    $("#set_auto").checked = !!s.auto_list;
+    $("#set_trade").checked = !!s.enable_trade;
+  }catch(e){}
+}
+$("#saveSet").addEventListener("click",async ()=>{
+  const body={
+    steam_api_key:$("#set_key").value,
+    steam_username:$("#set_user").value,
+    steam_password:$("#set_pass").value,
+    steam_proxy:$("#set_proxy").value.trim(),
+    steam_ssl_verify:!$("#set_insecure").checked,
+    steamguard_file:($("#set_maf").value.trim()||"steamguard.json"),
+    auto_list:$("#set_auto").checked,
+    enable_trade:$("#set_trade").checked,
+  };
+  const wpw=$("#set_webpw").value.trim();
+  if(wpw) body.web_password=wpw;          // 只在填了时才改（避免误清空）
+  const btn=$("#saveSet"); btn.textContent="保存中…"; btn.disabled=true;
+  try{
+    const r=await fetch("/api/secret",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    if(!r.ok) throw 0;
+    const invAppid=+$("#set_inv_game").value||730;
+    const sr=await fetch("/api/settings",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({inventory_appid:invAppid})});
+    if(!sr.ok) throw 0;
+    APP_SETTINGS.inventory_appid=invAppid;
+    $("#set_key").value=""; $("#set_pass").value=""; $("#set_webpw").value="";
+    toast("设置已保存","",  "ok");
+    await loadConfig(); await loadSecret();
+  }catch(_){ toast("保存失败","后端没响应","err"); }
+  finally{ btn.textContent="保存设置"; btn.disabled=false; }
+});
+
+/* ---------------- Steam 登录 ---------------- */
+let authValid=null;   // null=未联网验证, true/false
+function renderAuthPill(){
+  const pill=$("#authPill");
+  const who = AUTH.account_name?(" · "+AUTH.account_name):(AUTH.steamid?(" · "+AUTH.steamid):"");
+  if(!AUTH.logged_in){ pill.className="pill off"; pill.textContent="未登录"; $("#btnLogout").style.display="none"; return; }
+  $("#btnLogout").style.display="";
+  if(authValid===false){ pill.className="pill warn"; pill.textContent="会话已过期·请重登"+who; }
+  else { pill.className="pill on"; pill.textContent="已登录"+who; }
+}
+async function refreshAuth(){
+  try{ AUTH = await (await fetch("/api/auth/status")).json(); }catch(e){ AUTH={logged_in:false}; }
+  renderAuthPill();
+}
+async function checkSession(){               // 联网验证会话真的有效（避免“显示已登录其实失效”）
+  if(!AUTH.logged_in){ authValid=null; return; }
+  let result=null;
+  try{ result=await (await fetch("/api/auth/check")).json(); authValid=result.valid===null?null:!!result.valid; }
+  catch(e){ authValid=null; }
+  renderAuthPill();
+  if(result&&result.recovered) toast("Steam 会话已自动恢复","长效登录仍然有效","ok");
+  else if(authValid===false) toast("Steam 会话确已过期","自动恢复失败，请重新登录；检查加速器代理出口是否变化","warn");
+}
+$("#btnLogout").addEventListener("click",async ()=>{
+  await fetch("/api/auth/logout",{method:"POST"}).catch(()=>{});
+  toast("已退出 Steam 登录","","ok"); refreshAuth();
+});
+
+/* 账号密码自动登录 */
+$("#btnLoginAuto").addEventListener("click",async ()=>{
+  openModal("Steam 登录中…", `<p class="muted"><span class="spin"></span>正在用「账号设置」里的账号密码向 Steam 发起登录…</p>`, []);
+  let r,j;
+  try{ r=await fetch("/api/auth/begin",{method:"POST"}); j=await r.json(); }
+  catch(_){ closeModal(); toast("登录失败","后端没响应","err"); return; }
+  if(j.error){ closeModal(); toast("登录失败", j.error, "err"); return; }
+  if(j.can_confirm){
+    showConfirmStep(j.can_code, j.is_email);      // 优先手机点同意，免输码（可选输码）
+  } else if(j.need==="code" || j.need==="email_code"){
+    showCodeStep(j.need==="email_code");
+  } else {
+    showConfirmStep(false, false);
+  }
+});
+function showCodeStep(isEmail){
+  const tip = isEmail ? "Steam 给你邮箱发了验证码，填进来。" : "打开手机 Steam App → 令牌，把当前<b>令牌码</b>（字母+数字）填进来。";
+  openModal("输入验证码", `<p>${tip}</p><input class="big code" id="codeInput" maxlength="8" placeholder="_____" autocomplete="one-time-code" autocapitalize="characters" style="text-transform:uppercase" autofocus>
+     <p class="muted" id="codeMsg" style="margin-top:10px">小写会自动转成大写。</p>`, [
+    {label:"取消", on:closeModal},
+    {label:"提交", cls:"go", on:submitCode},
+  ]);
+  const ci=$("#codeInput"); ci.focus();
+  ci.addEventListener("input",()=>{ const p=ci.selectionStart; ci.value=ci.value.toUpperCase(); ci.setSelectionRange(p,p); });
+  ci.addEventListener("keydown",e=>{ if(e.key==="Enter") submitCode(); });
+}
+async function submitCode(){
+  const code=($("#codeInput")?$("#codeInput").value:"").trim().toUpperCase();
+  if(!code){ return; }
+  const msg=$("#codeMsg"); if(msg) msg.innerHTML='<span class="spin"></span>验证中…';
+  let j;
+  try{ j=await (await fetch("/api/auth/code",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code})})).json(); }
+  catch(_){ if(msg) msg.textContent="后端没响应"; return; }
+  if(j.error){ if(msg) msg.textContent="× "+j.error; return; }
+  if(j.state==="done"){ loginDone(); }
+  else { if(msg) msg.textContent="已提交，等待生效…"; startConfirmPoll(); }
+}
+function showConfirmStep(canCode, isEmail){
+  const codeBox = canCode ? `
+    <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px;">
+      <p class="muted">嫌等得慢？也可以直接输${isEmail?'邮箱验证码':'手机令牌码'}：</p>
+      <div style="display:flex;gap:8px;align-items:stretch;">
+        <input class="big code" id="codeInput" maxlength="8" placeholder="_____" autocomplete="one-time-code" autocapitalize="characters" style="text-transform:uppercase;flex:1">
+        <button class="btn go" id="codeSubmit" type="button">提交</button>
+      </div>
+      <p class="muted" id="codeMsg" style="margin-top:8px"></p>
+    </div>` : "";
+  openModal("在手机上点同意即可", `
+    <p>已发起登录。打开<b>手机 Steam App</b>，在弹出提示里点<b>“同意 / 确认登录”</b>就行——<b>不用输码</b>。</p>
+    <p class="muted"><span class="spin"></span> <span id="confMsg">等你在手机上确认…</span></p>
+    ${codeBox}`, [
+    {label:"关闭", on:closeModal},
+  ]);
+  const ci=$("#codeInput");
+  if(ci){
+    ci.addEventListener("input",()=>{ const p=ci.selectionStart; ci.value=ci.value.toUpperCase(); ci.setSelectionRange(p,p); });
+    ci.addEventListener("keydown",e=>{ if(e.key==="Enter") submitCode(); });
+    $("#codeSubmit").addEventListener("click",submitCode);
+  }
+  startConfirmPoll();
+}
+function startConfirmPoll(){
+  if(pollTimer) clearInterval(pollTimer);
+  let tries=0;
+  pollTimer=setInterval(async ()=>{
+    tries++;
+    const m=$("#confMsg")||$("#codeMsg");
+    let j;
+    try{ j=await (await fetch("/api/auth/poll",{method:"POST"})).json(); }
+    catch(_){ if(m) m.textContent="网络抖了下，继续等…"; return; }   // 不停，下次再试
+    if(j.state==="done"){ clearInterval(pollTimer); pollTimer=null; loginDone(); return; }
+    if(j.error){ if(m) m.textContent="重试中…（"+j.error+"）"; }       // 出错也不停，继续轮询
+    else if(m){ m.textContent=`等你在手机上点同意…（已等 ${tries*3}s）`; }
+    if(tries>100){ clearInterval(pollTimer); pollTimer=null; if(m) m.textContent="等太久了，关掉重试，或直接输码。"; }
+  }, 3000);
+}
+function loginDone(){
+  closeModal(); toast("Steam 登录成功","验证会话中…","ok"); refreshAuth().then(checkSession);
+}
+
+/* 粘贴 Cookie 登录（后备） */
+$("#btnLoginCookie").addEventListener("click",()=>{
+  openModal("粘贴 Cookie 登录", `
+    <p class="muted">浏览器登录 steamcommunity.com 后，按 F12 → Application/应用 → Cookies → steamcommunity.com，
+    复制 <b>steamLoginSecure</b> 的值贴进来（形如 <code>76561198...%7C%7C....</code>）。</p>
+    <textarea id="ckInput" placeholder="steamLoginSecure 的值"></textarea>
+    <p class="muted" id="ckMsg" style="margin-top:8px"></p>`, [
+    {label:"取消", on:closeModal},
+    {label:"登录", cls:"go", on:cookieLogin},
+  ]);
+}
+);
+async function cookieLogin(){
+  const v=($("#ckInput")?$("#ckInput").value:"").trim();
+  const msg=$("#ckMsg");
+  if(!v){ if(msg) msg.textContent="把 steamLoginSecure 的值贴进来"; return; }
+  if(msg) msg.innerHTML='<span class="spin"></span>校验中…';
+  let r,j;
+  try{ r=await fetch("/api/auth/cookie",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({steamLoginSecure:v})}); j=await r.json(); }
+  catch(_){ if(msg) msg.textContent="后端没响应"; return; }
+  if(!r.ok || j.error){ if(msg) msg.textContent="× "+(j.error||"失败"); return; }
+  closeModal();
+  if(j.verified===null) toast("Cookie 已保存，暂未验证","Steam 网络暂不可用；恢复后会再次检查","warn");
+  else toast("Cookie 登录成功", "steamid "+(j.steamid||""), "ok");
+  refreshAuth().then(checkSession);
+}
+
+/* ---------------- 启动 ---------------- */
+loadConfig()
+  .then(loadSecret).then(loadSettings).then(refreshAuth).then(load)
+  .then(ok=>{ if(ok===false) toast("后端没连上","请用「启动倒货台.bat」启动，浏览器开 http://127.0.0.1:8777","err"); })
+  .then(()=>{ setInterval(poll,15000); setInterval(refreshAuth,30000); checkSession(); });
+</script>
+</body>
+</html>

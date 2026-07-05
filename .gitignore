@@ -1,0 +1,25 @@
+# Local secrets and Steam session data
+secret.json
+steam_login.json
+steamguard.json
+*.maFile
+watchlist.json
+settings.json
+config.json
+operations.json
+
+# Python/runtime files
+.venv/
+__pycache__/
+*.py[cod]
+
+# Local agent/editor files
+.agents/
+.claude/
+.codex/
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
