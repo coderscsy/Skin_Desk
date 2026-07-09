@@ -65,6 +65,30 @@ http://127.0.0.1:8777
    - “批量确认”：需要本地 `maFile`，否则仍需手机 Steam Guard 手动确认。
 8. 点击“同步 Steam”可以让本地表格与 Steam 库存/挂单状态对齐。
 
+## Steam 加速 / 代理配置
+
+本工具不是 Steam 客户端插件，而是本地 Python 程序直接访问 Steam 网页接口，例如：
+
+```text
+https://steamcommunity.com/inventory/...
+https://steamcommunity.com/market/...
+```
+
+因此，“打开了游戏加速器”不一定等于本工具已经被加速。推荐使用能提供本地 HTTP 代理端口的工具，例如 Clash / Mihomo、Watt Toolkit / Steam++ 等，然后在本工具设置里填写代理地址：
+
+```text
+http://127.0.0.1:7890
+```
+
+端口以你的代理工具实际显示为准。
+
+UU 加速器通常主要加速游戏或 Steam 客户端流量，不一定会接管 Python 程序访问 `steamcommunity.com` 的请求。如果使用 UU 时出现 `ConnectionResetError(10054)`、连接超时、库存加载失败等问题，可以尝试：
+
+1. 在 UU 中选择 Steam 社区 / Steam 市场 / Steam 商店相关加速项，而不是只加速 CS2。
+2. 如果 UU 没有明确提供 `127.0.0.1:端口` 形式的 HTTP 代理，本工具里的代理地址请保持为空。
+3. HTTPS 校验默认保持开启；只有在可信本机代理会重签证书并导致证书错误时，才临时关闭。
+4. 如果仍然失败，建议改用带本地 HTTP 代理端口的工具。
+
 ## 上架价格说明
 
 表格里的“上架价”就是买家看到的 Steam 挂牌价。系统会按 Steam 手续费计算实际到手余额：
