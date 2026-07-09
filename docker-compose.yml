@@ -5,8 +5,8 @@ services:
     container_name: skindesk
     restart: unless-stopped
     ports:
-      - "8777:8777"          # 改成 "宿主端口:8777"，比如绿联上想用 9000 就写 "9000:8777"
+      - "8777:8777"          # 如需改端口，可写成 "宿主机端口:8777"，例如 "9000:8777"
     environment:
       - SKINDESK_HOST=0.0.0.0
     volumes:
-      - ./data:/data          # 把 secret.json 等放到这个 data 目录里（持久化、可编辑）
+      - ./data:/data          # secret.json 等本地数据保存在这里，便于持久化和备份

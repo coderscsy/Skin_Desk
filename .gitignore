@@ -7,6 +7,7 @@ watchlist.json
 settings.json
 config.json
 operations.json
+dist/
 
 # Python/runtime files
 .venv/

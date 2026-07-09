@@ -16,12 +16,16 @@ if not defined PY (
 if not defined PY goto nopy
 
 if not exist ".venv\Scripts\python.exe" (
-  echo First run: creating environment, installing flask/requests...
+  echo First run: creating environment and installing dependencies...
   echo This needs internet and may take a minute.
   %PY% -m venv .venv
   if errorlevel 1 goto venverr
   ".venv\Scripts\python.exe" -m pip install --upgrade pip >nul
-  ".venv\Scripts\python.exe" -m pip install flask requests
+  if exist "requirements.txt" (
+    ".venv\Scripts\python.exe" -m pip install -r requirements.txt
+  ) else (
+    ".venv\Scripts\python.exe" -m pip install flask requests
+  )
   if errorlevel 1 goto piperr
   echo [OK] Environment ready.
   echo.
