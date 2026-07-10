@@ -12,7 +12,7 @@
     --accent:#5aa9e6; --accent-2:#7dd3fc; --accent-dim:rgba(90,169,230,.14);
     --up:#5fd38d; --down:#ef7d75; --warn:#e7b75f; --shadow:0 18px 55px rgba(0,0,0,.32);
     --disabled-bg:#121c28; --disabled-text:#6f8194; --disabled-line:#25364a;
-    --disabled-go-bg:#173325; --disabled-go-text:#8bcfa7; --disabled-go-line:#28543a;
+    --disabled-go-bg:#ffffff; --disabled-go-text:#111827; --disabled-go-line:#d8e2ee;
     --mono:ui-monospace,"SF Mono",Menlo,"JetBrains Mono",monospace;
     --ui:-apple-system,"Segoe UI",system-ui,"PingFang SC","Microsoft YaHei",sans-serif;
   }
@@ -23,7 +23,7 @@
     --accent:#2563eb; --accent-2:#0284c7; --accent-dim:rgba(37,99,235,.10);
     --up:#14854d; --down:#d1433b; --warn:#b7791f; --shadow:0 16px 42px rgba(30,64,108,.13);
     --disabled-bg:#eef3f8; --disabled-text:#7a8797; --disabled-line:#d7e1ec;
-    --disabled-go-bg:#dff3e8; --disabled-go-text:#24734a; --disabled-go-line:#b9dfc8;
+    --disabled-go-bg:#ffffff; --disabled-go-text:#111827; --disabled-go-line:#cfd9e6;
   }
   *{box-sizing:border-box}
   body{margin:0;background:
@@ -86,7 +86,7 @@
   .btn:hover{filter:brightness(1.08)}
   .btn.ghost{background:color-mix(in srgb,var(--panel-2) 70%,transparent);color:var(--muted);border:1px solid var(--line);box-shadow:none}
   .btn.ghost:hover{color:var(--text);border-color:var(--muted)}
-  body[data-theme="light"] .btn.ghost{background:#f8fbff;color:#53657a;border-color:#cfdae8}
+  body[data-theme="light"] .btn.ghost{background:#fff;color:#111827;border-color:#cfdae8}
   body[data-theme="light"] .btn.ghost:hover{color:#233249;border-color:#9fb1c7;background:#fff}
   .btn.go{background:var(--up);color:#06121d}
   body[data-theme="light"] .btn.go{color:#fff}
@@ -320,7 +320,11 @@
   </div>
 
   <form class="add" id="addForm" autocomplete="off">
-    <div class="section-title">新增监控物品 <span class="hint">填“上架价”即可直接用于上架；游戏掉落成本填 0</span></div>
+    <div class="section-title">
+      新增监控物品
+      <span class="hint">填“上架价”即可直接用于上架；游戏掉落成本填 0</span>
+      <button class="btn ghost sm" id="btnInvTop" type="button">从 Steam 库存选择</button>
+    </div>
     <div class="f"><label>游戏</label><select name="appid" id="addGame"></select></div>
     <div class="f"><label>物品英文名 (market hash name)</label>
       <input name="name" placeholder="Snakebite Case" required></div>
@@ -1002,12 +1006,14 @@ async function applyBatchPrice(ids){
 
 /* ---------------- 从 Steam 库存选择 ---------------- */
 let INV_ITEMS=[];
-$("#btnInv").addEventListener("click",openInventoryPicker);
-function openInventoryPicker(){
+$("#btnInv").addEventListener("click",()=>openInventoryPicker({appid:APP_SETTINGS.inventory_appid||730, autoLoadDefault:true}));
+$("#btnInvTop").addEventListener("click",()=>openInventoryPicker({appid:+($("#addGame")&&$("#addGame").value||APP_SETTINGS.inventory_appid||730), autoLoadDefault:true}));
+function openInventoryPicker(opts={}){
   if(!AUTH.logged_in || !AUTH.steamid){ toast("先登录 Steam","登录一次拿到你的 steamid，才能拉库存","warn"); return; }
+  const initialAppid=+(opts.appid||APP_SETTINGS.inventory_appid||730);
   const body=`
     <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
-      <select id="invGame">${gameOptionsHTML(APP_SETTINGS.inventory_appid||730)}</select>
+      <select id="invGame">${gameOptionsHTML(initialAppid)}</select>
       <button class="btn sm" id="invLoad" type="button">加载库存</button>
       <button class="btn ghost sm" id="invDefault" type="button">设为默认游戏</button>
       <button class="btn ghost sm" id="invAll" type="button">全选 / 全不选</button>
@@ -1033,6 +1039,10 @@ function openInventoryPicker(){
     invSelCount();
   });
   ov.querySelector("#invList").addEventListener("change",e=>{ if(e.target.classList.contains("invchk")) invSelCount(); });
+  const selectedAppid=+ov.querySelector("#invGame").value;
+  if(opts.autoLoadDefault && selectedAppid === +(APP_SETTINGS.inventory_appid||730)){
+    setTimeout(()=>invLoad(), 0);
+  }
 }
 async function saveDefaultInventoryGame(){
   const ov=$("#ov"); if(!ov) return;
