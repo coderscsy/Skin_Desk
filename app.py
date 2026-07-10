@@ -19,6 +19,7 @@ import time
 import threading
 import traceback
 from datetime import datetime, timezone
+from urllib.parse import quote
 
 import requests
 from flask import Flask, request, jsonify, send_from_directory, Response
@@ -114,6 +115,7 @@ ITEMS = []                # 监控列表
 OPERATIONS = []           # 最近操作流水
 JOBS = {}                 # 后台批量任务
 PRICE_CACHE = {}          # name -> {lowest, median, volume, error, ts}
+HISTORY_CACHE = {}        # (appid, name) -> {points, ts, error, cooldown_until}
 _steam_client = None      # 复用的 steampy 客户端（仅旧的“送出/发货”用）
 
 STEAM = SteamSession(STEAM_LOGIN_FILE)   # 新的网页会话（登录 + 上架）
@@ -607,6 +609,80 @@ def api_refresh_prices():
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": friendly_steam_error(e)}), 502
+
+
+@app.route("/api/price_history")
+def api_price_history():
+    """读取 Steam 官方市场价格历史：中位售价 + 成交量。"""
+    name = (request.args.get("name") or "").strip()
+    try:
+        appid = int(request.args.get("appid", CONFIG["appid"]))
+    except Exception:
+        appid = CONFIG["appid"]
+    if not name:
+        return jsonify({"error": "missing_name"}), 400
+    key = (appid, name)
+    now = time.time()
+    cached = HISTORY_CACHE.get(key) or {}
+    # 成功数据 30 分钟内直接复用；Steam 历史接口比最低价更容易限流。
+    if cached.get("points") and now - cached.get("ts", 0) < 1800:
+        return jsonify({"appid": appid, "name": name, "points": cached["points"],
+                        "cached": True, "cache_age": int(now - cached.get("ts", now))})
+    cooldown_until = cached.get("cooldown_until", 0) or 0
+    if cooldown_until > now:
+        retry_after = int(cooldown_until - now)
+        if cached.get("points"):
+            return jsonify({"appid": appid, "name": name, "points": cached["points"],
+                            "cached": True, "stale": True,
+                            "cache_age": int(now - cached.get("ts", now)),
+                            "warning": f"Steam 价格历史接口限流中，显示缓存；约 {max(1, retry_after // 60)} 分钟后再试"})
+        return jsonify({"error": f"Steam 价格历史接口仍在限流冷却中，约 {max(1, retry_after // 60)} 分钟后再试",
+                        "retry_after": retry_after}), 429
+    try:
+        with STEAM_LOCK:
+            STEAM.ensure_ready()
+            r = STEAM.session.get("https://steamcommunity.com/market/pricehistory/",
+                                  params={"appid": appid, "market_hash_name": name},
+                                  headers={"Referer": f"https://steamcommunity.com/market/listings/{appid}/{quote(name, safe='')}"},
+                                  timeout=25)
+            if r.status_code in (401, 403):
+                raise NeedAuth("Steam 会话已失效，请重新登录")
+            if r.status_code == 429:
+                HISTORY_CACHE[key] = {**cached, "cooldown_until": now + 1800}
+                if cached.get("points"):
+                    return jsonify({"appid": appid, "name": name, "points": cached["points"],
+                                    "cached": True, "stale": True,
+                                    "cache_age": int(now - cached.get("ts", now)),
+                                    "warning": "Steam 价格历史接口限流中，显示上一次缓存"}), 200
+                return jsonify({"error": "Steam 价格历史接口限流中，已进入 30 分钟冷却；现在继续点只会延长限流",
+                                "retry_after": 1800}), 429
+            if r.status_code != 200:
+                return jsonify({"error": f"Steam 价格历史接口 HTTP {r.status_code}"}), 502
+            try:
+                data = r.json()
+            except ValueError:
+                return jsonify({"error": "Steam 返回了网页内容而不是价格历史数据，请确认 Steam 会话有效后重试"}), 502
+    except NeedAuth:
+        return jsonify({"error": "need_auth"}), 401
+    except Exception as e:
+        return jsonify({"error": friendly_steam_error(e)}), 502
+    if not data.get("success"):
+        return jsonify({"error": "Steam 没有返回价格历史，可能是物品名不匹配或市场暂不可用"}), 502
+    points = []
+    for row in data.get("prices") or []:
+        if len(row) < 3:
+            continue
+        try:
+            price = float(row[1])
+        except (TypeError, ValueError):
+            continue
+        try:
+            volume = int(str(row[2]).replace(",", ""))
+        except (TypeError, ValueError):
+            volume = 0
+        points.append({"time": str(row[0]), "price": price, "volume": volume})
+    HISTORY_CACHE[key] = {"points": points, "ts": time.time(), "cooldown_until": 0}
+    return jsonify({"appid": appid, "name": name, "points": points})
 
 
 @app.route("/api/inventory")

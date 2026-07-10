@@ -236,6 +236,7 @@
   .modal{background:var(--panel);border:1px solid var(--line);border-radius:16px;max-width:560px;width:100%;
          max-height:84vh;overflow:auto;box-shadow:0 24px 70px rgba(0,0,0,.38)}
   .modal h3{margin:0;padding:16px 18px;border-bottom:1px solid var(--line);font-size:15px}
+  .modal:has(.steam-chart){max-width:min(980px, calc(100vw - 36px))}
   .modal .body{padding:16px 18px;font-size:13px;line-height:1.55}
   .modal .body p{margin:0 0 10px} .modal .body .muted{color:var(--muted);font-size:12px}
   .modal .actions{display:flex;gap:10px;justify-content:flex-end;padding:12px 18px;border-top:1px solid var(--line)}
@@ -250,6 +251,17 @@
                  padding:22px;box-shadow:var(--shadow);text-align:center}
   .shutdown h2{margin:0 0 8px;color:var(--text-strong);font-size:20px}
   .shutdown p{margin:0;color:var(--muted);line-height:1.65}
+  .steam-chart{display:flex;flex-direction:column;gap:10px}
+  .chart-meta{display:flex;gap:10px;flex-wrap:wrap;color:var(--muted);font-size:12px}
+  .chart-meta b{color:var(--text-strong)}
+  .chartbox{width:100%;min-height:330px;border:1px solid var(--line);border-radius:12px;background:var(--panel-2);overflow:hidden}
+  .chartbox svg{display:block;width:100%;height:330px}
+  .chartbox text{font-family:var(--mono);font-size:11px;fill:var(--muted)}
+  .chartbox .axis{stroke:var(--muted);stroke-width:1;opacity:.55}
+  .chartbox .grid{stroke:var(--line);stroke-width:1;opacity:.55}
+  .chartbox .price-line{fill:none;stroke:#a6d608;stroke-width:2}
+  .chartbox .volume-bar{fill:#25527a;opacity:.55}
+  .chartbox .dotp{fill:var(--panel-2);stroke:#a6d608;stroke-width:2}
   .f2{display:flex;flex-direction:column;gap:5px}
   .f2 label{font-size:11px;color:var(--muted)}
   .f2 input{background:var(--panel-2);border:1px solid var(--line);color:var(--text);border-radius:7px;
@@ -270,20 +282,105 @@
     .batchbar .group{border-right:none;border-bottom:1px solid var(--line);padding-bottom:8px;width:100%}
     form.add input[name=name],.tradebar input{width:100%;min-width:0}
   }
+
+  /* 2026 UI refinement: focused dashboard */
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);min-height:100vh}
+  body::before{content:"";position:fixed;inset:0 0 auto;height:360px;pointer-events:none;background:radial-gradient(ellipse at 22% 0%,rgba(90,169,230,.13),transparent 58%);z-index:-1}
+  .appbar{height:68px;padding:0 max(24px,calc((100vw - 1520px)/2));gap:14px;background:color-mix(in srgb,var(--bg) 92%,transparent);box-shadow:0 1px 0 rgba(255,255,255,.02)}
+  .brandmark{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:linear-gradient(145deg,var(--accent),var(--accent-2));color:#06121d;font-weight:900;font-size:17px;box-shadow:0 8px 24px rgba(37,99,235,.24)}
+  body[data-theme="light"] .brandmark{color:#fff}
+  header .brand{min-width:190px}
+  header h1{font-size:17px}
+  header h1 .sub{font-size:10px}
+  header .tagline{font-size:11px}
+  .topnav{display:flex;align-items:center;gap:4px;margin-left:16px}
+  .topnav a{color:var(--muted);padding:8px 11px;border-radius:8px;font-size:13px;font-weight:600}
+  .topnav a:hover,.topnav a.active{color:var(--text-strong);background:var(--accent-dim)}
+  .banner{max-width:1520px;margin:12px auto 0;border:1px solid color-mix(in srgb,var(--warn) 28%,var(--line));border-radius:10px;padding:9px 13px;background:color-mix(in srgb,var(--warn) 8%,var(--panel));line-height:1.55}
+  .wrap{padding:16px 24px 36px;max-width:1568px}
+  .summary{grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
+  .summary>div{position:relative;overflow:hidden;border-radius:12px;padding:15px 16px;box-shadow:none;background:color-mix(in srgb,var(--panel) 96%,var(--accent-dim))}
+  .summary>div::after{content:"";position:absolute;right:-24px;bottom:-42px;width:94px;height:94px;border-radius:50%;background:var(--accent-dim)}
+  .summary .v{font-size:22px}
+  .loginbar,.tradebar,.batchbar,form.add,.settings,.scroll{box-shadow:none;border-radius:12px}
+  .loginbar{padding:10px 12px;margin-bottom:12px;background:color-mix(in srgb,var(--panel) 96%,transparent)}
+  .loginbar::before{content:"账户";font-weight:700;color:var(--text-strong);margin-right:3px}
+  .settings{margin-bottom:12px}
+  .settings summary{font-weight:650}
+  .tradebar{margin-bottom:12px;padding:11px 12px}
+  form.add{display:grid;grid-template-columns:100px minmax(220px,1.7fr) repeat(5,minmax(105px,.75fr)) 190px auto;gap:10px;padding:14px;margin-bottom:12px;align-items:end}
+  form.add .section-title{grid-column:1/-1;margin-bottom:0}
+  form.add .f{min-width:0}
+  form.add input,form.add select{width:100%!important;height:36px;border-radius:8px}
+  form.add button[type="submit"]{height:36px;padding-inline:22px}
+  .batchbar{position:sticky;top:78px;z-index:20;padding:10px 12px;margin-bottom:10px;background:color-mix(in srgb,var(--panel) 94%,transparent);backdrop-filter:blur(14px)}
+  .batchbar .group{gap:6px;padding-right:8px}
+  .batchbar .selinfo{width:100%;padding-top:3px}
+  .tablehead{display:flex;justify-content:space-between;align-items:end;gap:16px;margin:18px 2px 9px}
+  .tablehead h2{margin:0;color:var(--text-strong);font-size:16px}
+  .tablehead p{margin:4px 0 0;color:var(--muted);font-size:12px}
+  .tabletools{display:flex;gap:8px;align-items:center}
+  .searchbox{display:flex;align-items:center;gap:7px;height:34px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--muted)}
+  .searchbox:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+  .searchbox input{width:210px;border:0;outline:0;background:transparent;color:var(--text);font:inherit}
+  .scroll{max-height:calc(100vh - 185px);overflow:auto}
+  table{min-width:1180px}
+  thead th{top:0;padding:11px 9px;background:color-mix(in srgb,var(--panel) 96%,var(--panel-2));z-index:3}
+  tbody td{padding:10px 9px}
+  tbody tr{transition:background .15s ease}
+  tbody tr:hover{background:color-mix(in srgb,var(--accent-dim) 65%,transparent)}
+  tbody tr.sel{box-shadow:inset 3px 0 var(--accent)}
+  .compact-view th:nth-child(2),.compact-view td:nth-child(2),
+  .compact-view th:nth-child(7),.compact-view td:nth-child(7),
+  .compact-view th:nth-child(9),.compact-view td:nth-child(9),
+  .compact-view th:nth-child(12),.compact-view td:nth-child(12),
+  .compact-view th:nth-child(14),.compact-view td:nth-child(14){display:none}
+  .compact-view table{min-width:940px}
+  .iconbtn{padding:6px 9px}
+  .empty{margin-top:0;border-radius:12px}
+  @media(max-width:1180px){
+    form.add{grid-template-columns:100px minmax(220px,1fr) repeat(3,minmax(110px,.7fr));}
+    form.add button[type="submit"]{grid-column:auto}
+    .topnav{display:none}
+  }
+  @media(max-width:760px){
+    .appbar{height:auto;padding:12px 14px}.brandmark{display:none}.live{order:3;width:100%;margin:0}.banner{margin:8px 10px 0}.wrap{padding:12px 10px 24px}
+    .summary{grid-template-columns:1fr 1fr}.summary>div:first-child{grid-column:1/-1}
+    form.add{display:flex}.section-title .hint{display:none}
+    .tablehead{align-items:stretch;flex-direction:column}.tabletools{width:100%}.searchbox{flex:1}.searchbox input{width:100%}
+    .batchbar{top:8px}.loginbar .grow{display:none}
+  }
+
+  /* 顶部导航交互修复 */
+  #workspace,#addForm,#setPanel{scroll-margin-top:92px}
+  .nav-flash{animation:navFlash .9s ease}
+  @keyframes navFlash{
+    0%{box-shadow:0 0 0 0 rgba(90,169,230,.42)}
+    45%{box-shadow:0 0 0 5px rgba(90,169,230,.16)}
+    100%{box-shadow:none}
+  }
+
 </style>
 </head>
 <body>
-<header>
+<header class="appbar">
+  <div class="brandmark">S</div>
   <div class="brand">
     <h1>倒货台<span class="sub">Skin Desk</span></h1>
-    <div class="tagline">Steam 库存 / 挂单 / 成本一屏管理</div>
+    <div class="tagline">库存、定价与挂单管理</div>
   </div>
+  <nav class="topnav" aria-label="页面导航">
+    <a href="#workspace" class="active">工作台</a>
+    <a href="#addForm">添加物品</a>
+    <a href="#setPanel">设置</a>
+  </nav>
   <div class="live"><span id="dot" class="dot"></span><span id="livetxt">连接中…</span></div>
   <button class="themebtn" id="themeToggle" type="button" title="切换明亮 / 暗色主题">暗色</button>
 </header>
 <p id="banner" class="banner">读取设置中…</p>
 
-<div class="wrap">
+<div class="wrap" id="workspace">
   <div class="summary">
     <div><div class="k">持仓数</div><div class="v" id="s-count">0</div></div>
     <div><div class="k">总到手</div><div class="v" id="s-net">¥0</div></div>
@@ -328,7 +425,7 @@
 
   <form class="add" id="addForm" autocomplete="off">
     <div class="section-title">
-      新增监控物品
+      <span>添加物品</span><span class="hint">填写英文市场名即可开始监控</span>
     </div>
     <div class="f"><label>游戏</label><select name="appid" id="addGame"></select></div>
     <div class="f"><label>物品英文名 (market hash name)</label>
@@ -363,7 +460,18 @@
     <span class="selinfo" id="selInfo">从库存选择物品后，只需填写“上架价”；价格默认用缓存，需要时点“刷新价格”。</span>
   </div>
 
-  <div class="scroll">
+  <div class="tablehead">
+    <div>
+      <h2>库存与挂单</h2>
+      <p>勾选物品后可批量操作；表格中的价格可直接编辑</p>
+    </div>
+    <div class="tabletools">
+      <label class="searchbox"><span>⌕</span><input id="itemSearch" type="search" placeholder="搜索物品或状态"></label>
+      <button class="btn ghost sm" id="viewToggle" type="button">显示完整字段</button>
+    </div>
+  </div>
+
+  <div class="scroll compact-view" id="tableScroll">
     <table>
       <thead><tr>
         <th class="c"><input id="chkAll" type="checkbox" title="全选/取消"></th>
@@ -437,6 +545,13 @@ const fromLocalInput = v => v ? Math.floor(new Date(v).getTime()/1000) : null;
 function ago(sec){
   if(!sec) return "";
   const d=Math.max(0,Math.floor(Date.now()/1000-sec));
+  if(d<60) return "刚刚";
+  if(d<3600) return Math.floor(d/60)+"分钟前";
+  if(d<86400) return Math.floor(d/3600)+"小时前";
+  return Math.floor(d/86400)+"天前";
+}
+function ageText(seconds){
+  const d=Math.max(0,Math.floor(+seconds||0));
   if(d<60) return "刚刚";
   if(d<3600) return Math.floor(d/60)+"分钟前";
   if(d<86400) return Math.floor(d/3600)+"小时前";
@@ -556,6 +671,17 @@ function priceCells(it){
   };
 }
 
+function inventoryCheck(it){
+  const available=Math.max(0, Number(it&&it.steam_inventory_count)||0);
+  const requested=Math.max(1, Number(it&&it.operation_qty)||1);
+  if(available<=0) return {ok:false,available,requested,msg:"Steam 库存为 0，请先同步库存或确认物品仍在库存中"};
+  if(requested>available) return {ok:false,available,requested,msg:`本次要上架 ${requested} 件，但 Steam 库存只有 ${available} 件`};
+  return {ok:true,available,requested,msg:""};
+}
+function isListLocked(it){
+  return it.status==="listed"||it.status==="pending"||(+it.steam_listing_count||0)>0;
+}
+
 function render(){
   if(hasActiveEditor()) return;
   const tb=$("#rows"); tb.innerHTML="";
@@ -569,7 +695,10 @@ function render(){
       : `<span class="dim">${priceErr==='rate_limited'?'限流中':priceErr?'无数据':'…'}</span>`;
     const vol = it.volume? `<span class="sub">日成交 ${it.volume}${it.median!=null?' · 中位 '+fmt(it.median):''}</span>`:"";
     const pc = priceCells(it);
-    const listLocked=it.status==="listed"||it.status==="pending"||(+it.steam_listing_count||0)>0;
+    const listLocked=isListLocked(it);
+    const inv=inventoryCheck(it);
+    const listDisabled=listLocked||!inv.ok;
+    const listTitle=listLocked?"已挂出/待确认，需先下架并同步":(!inv.ok?inv.msg:"");
 
     const tr=document.createElement("tr");
     tr.dataset.id=it.id;
@@ -595,7 +724,8 @@ function render(){
       <td class="l"><input class="tl" value="${esc(it.trade_url||'')}" data-k="trade_url" placeholder="收货 交易链接">
           <span class="tlhint" data-tl="${it.id}"></span></td>
       <td class="act">
-          <button class="iconbtn sell" data-act="list" ${listLocked?'disabled title="已挂出/待确认，需先下架并同步"':''}>${listLocked?'已挂出':'上架'}</button>
+          <button class="iconbtn" data-act="history" title="查看 Steam 售价中位数和销量走势">走势</button>
+          <button class="iconbtn sell" data-act="list" ${listDisabled?`disabled title="${esc(listTitle)}"`:''}>${listLocked?'已挂出':(!inv.ok?'无库存':'上架')}</button>
           <button class="iconbtn send" data-act="send">送出</button>
           <button class="iconbtn del" data-act="del">删</button></td>`;
     tb.appendChild(tr);
@@ -604,6 +734,7 @@ function render(){
   tickCountdowns();
   updateTLHints();
   updateBatchUI();
+  applyTableFilter();
 }
 
 function statusText(s){return {watching:"盯价中",scheduled:"已定时",due:"到点待挂",pending:"待手机确认",listed:"已挂出",sent:"已发出",error:"出错"}[s]||s;}
@@ -701,11 +832,109 @@ function patchRow(id,it){
   pcell.className="cell-profit "+pc.profitCls; pcell.innerHTML=pc.profit;
 }
 
+function parseSteamHistoryTime(s){
+  const m=String(s||"").match(/^([A-Za-z]+)\s+(\d+)\s+(\d{4})\s+(\d+):\s+([+-]\d+)$/);
+  if(m){
+    const tz=m[5][0]+m[5].slice(1).padStart(2,"0")+"00";
+    const t=Date.parse(`${m[1]} ${m[2]} ${m[3]} ${m[4]}:00 GMT${tz}`);
+    if(!Number.isNaN(t)) return Math.floor(t/1000);
+  }
+  const t=Date.parse(s);
+  return Number.isNaN(t)?0:Math.floor(t/1000);
+}
+function formatSteamHistoryTime(s){
+  const ts=parseSteamHistoryTime(s);
+  if(!ts) return s||"";
+  return new Date(ts*1000).toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit"});
+}
+function filterHistoryPoints(points,range){
+  const withTs=(points||[]).map(p=>({...p,ts:parseSteamHistoryTime(p.time)})).filter(p=>p.price!=null);
+  if(!withTs.length || range==="all") return withTs;
+  const maxTs=Math.max(...withTs.map(p=>p.ts||0));
+  const days={week:7,month:31,year:365}[range]||31;
+  return withTs.filter(p=>!p.ts || p.ts>=maxTs-days*86400);
+}
+function renderSteamHistoryChart(points,range="month"){
+  const data=filterHistoryPoints(points,range);
+  if(!data.length) return `<div class="empty">Steam 没有返回可用价格历史</div>`;
+  const w=900,h=330,p={l:58,r:56,t:24,b:42}, cw=w-p.l-p.r, ch=h-p.t-p.b;
+  const maxPrice=Math.max(...data.map(x=>+x.price||0), 1);
+  const maxVol=Math.max(...data.map(x=>+x.volume||0), 1);
+  const priceTop=maxPrice*1.12;
+  const xOf=i=>p.l+(data.length===1?cw/2:i*cw/(data.length-1));
+  const yPrice=v=>p.t+ch-(+v||0)/priceTop*ch;
+  const yVol=v=>p.t+ch-(+v||0)/maxVol*ch*.88;
+  const bars=data.map((d,i)=>{
+    const bw=Math.max(1,Math.min(10,cw/data.length*.7));
+    const x=xOf(i)-bw/2, y=yVol(d.volume), bh=p.t+ch-y;
+    return `<rect class="volume-bar"><title>${esc(formatSteamHistoryTime(d.time))}\n销量 ${d.volume}</title></rect>`.replace("<rect",`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1,bh).toFixed(1)}"`);
+  }).join("");
+  const line=data.map((d,i)=>`${i?'L':'M'}${xOf(i).toFixed(1)} ${yPrice(d.price).toFixed(1)}`).join(" ");
+  const last=data[data.length-1];
+  const yTicks=[0,.25,.5,.75,1].map(r=>{
+    const y=p.t+ch-r*ch, val=priceTop*r;
+    return `<line class="grid" x1="${p.l}" y1="${y}" x2="${w-p.r}" y2="${y}"/><text x="${p.l-8}" y="${y+4}" text-anchor="end">¥${val.toFixed(2)}</text>`;
+  }).join("");
+  const volTicks=[0,.5,1].map(r=>{
+    const y=p.t+ch-r*ch*.88, val=maxVol*r;
+    return `<text x="${w-p.r+10}" y="${y+4}">${Math.round(val).toLocaleString()}</text>`;
+  }).join("");
+  const xLabels=[0,Math.floor((data.length-1)/2),data.length-1].filter((v,i,a)=>a.indexOf(v)===i).map(i=>{
+    return `<text x="${xOf(i)}" y="${h-12}" text-anchor="middle">${esc(formatSteamHistoryTime(data[i].time))}</text>`;
+  }).join("");
+  return `<div class="chart-meta"><span>范围 <b>${{week:"周",month:"月",year:"年",all:"总览"}[range]}</b></span><span>点数 <b>${data.length}</b></span><span>最新 <b>${fmt(last.price)}</b></span><span>销量 <b>${(+last.volume||0).toLocaleString()}</b></span></div>
+    <div class="chartbox"><svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Steam 售价中位数和销量走势">
+      ${yTicks}${volTicks}
+      <line class="axis" x1="${p.l}" y1="${p.t}" x2="${p.l}" y2="${p.t+ch}"/>
+      <line class="axis" x1="${p.l}" y1="${p.t+ch}" x2="${w-p.r}" y2="${p.t+ch}"/>
+      <line class="axis" x1="${w-p.r}" y1="${p.t}" x2="${w-p.r}" y2="${p.t+ch}"/>
+      ${bars}<path class="price-line" d="${line}"/>
+      <circle class="dotp" cx="${xOf(data.length-1).toFixed(1)}" cy="${yPrice(last.price).toFixed(1)}" r="4"><title>${esc(formatSteamHistoryTime(last.time))}\n${fmt(last.price)}\n已售出 ${last.volume} 件</title></circle>
+      ${xLabels}<text x="18" y="${p.t+ch/2}" transform="rotate(-90 18 ${p.t+ch/2})">价格</text><text x="${w-14}" y="${p.t+ch/2}" transform="rotate(90 ${w-14} ${p.t+ch/2})">销量</text>
+    </svg></div>`;
+}
+function historyRangeButtons(active="month"){
+  return `<div style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:10px">${["week","month","year","all"].map(r=>`<button class="btn ${r===active?'':'ghost'} sm" data-range="${r}" type="button">${{week:"周",month:"月",year:"年",all:"总览"}[r]}</button>`).join("")}</div>`;
+}
+async function openSteamHistory(it){
+  if(!it) return;
+  const ov=openModal("Steam 价格走势",`<p class="muted"><span class="spin"></span>正在读取 Steam 官方价格历史…</p>`,[{label:"关闭",on:closeModal}]);
+  try{
+    const r=await fetch(`/api/price_history?appid=${encodeURIComponent(it.appid||730)}&name=${encodeURIComponent(it.name)}`);
+    const txt=await r.text();
+    let j;
+    try{ j=JSON.parse(txt); }
+    catch(_){
+      const isHtml=/^\s*</.test(txt||"");
+      throw new Error(isHtml?"后端接口未生效或返回了网页内容，请重启启动台后再试":(txt||"返回内容不是 JSON"));
+    }
+    if(!r.ok || j.error) throw new Error(j.error==="need_auth"?"Steam 会话失效，请重新登录":(j.error||"读取失败"));
+    let range="month";
+    const draw=()=>{
+      const body=ov.querySelector(".body");
+      const cacheNote = j.warning
+        ? `<p class="muted" style="color:var(--warn);margin:0">${esc(j.warning)}</p>`
+        : j.cached
+          ? `<p class="muted" style="margin:0">显示缓存${j.cache_age!=null?' · '+ageText(j.cache_age):''}</p>`
+          : "";
+      body.innerHTML=`<div class="steam-chart"><p style="margin:0"><b>${esc(j.name)}</b><span class="sub">${esc(gameName(j.appid))} · Steam 官方售价中位数 / 成交量</span></p>${cacheNote}${historyRangeButtons(range)}<div id="chartMount">${renderSteamHistoryChart(j.points,range)}</div></div>`;
+      body.querySelectorAll("[data-range]").forEach(b=>b.addEventListener("click",()=>{range=b.dataset.range;draw();}));
+    };
+    draw();
+  }catch(err){
+    ov.querySelector(".body").innerHTML=`<p class="muted">读取失败：${esc(err.message||"后端没响应")}</p>`;
+  }
+}
+
 /* ---------------- 行内操作按钮 ---------------- */
 $("#rows").addEventListener("click",async e=>{
   const btn=e.target.closest("button"); if(!btn) return;
   const id=btn.closest("tr").dataset.id;
   const it=state.find(x=>x.id===id);
+  if(btn.dataset.act==="history"){
+    openSteamHistory(it);
+    return;
+  }
   if(btn.dataset.act==="del"){
     if(!confirm("删除这条监控？")) return;
     try{ const r=await fetch(`/api/items/${id}`,{method:"DELETE"}); if(!r.ok) throw 0;
@@ -713,6 +942,8 @@ $("#rows").addEventListener("click",async e=>{
     catch(_){ toast("删除失败","后端没响应","err"); }
   }
   if(btn.dataset.act==="list"){
+    const inv=inventoryCheck(it);
+    if(!inv.ok){ toast("不能上架",inv.msg,"warn"); return; }
     const suggested=+(it.listing_price||it.listing||it.lowest||0);
     openModal("设置上架价", `
       <p><b>${esc(it.name)}</b></p>
@@ -759,6 +990,8 @@ $("#addForm").elements.markup.addEventListener("input",()=>{
 
 async function submitSingleList(id){
   const input=$("#singleListPrice"), msg=$("#singleListMsg");
+  const it=state.find(x=>x.id===id), inv=inventoryCheck(it);
+  if(!inv.ok){ if(msg) msg.textContent="× "+inv.msg; toast("不能上架",inv.msg,"warn"); return; }
   const raw=String(input&&input.value||"").trim().replace(",",".");
   if(!/^\d+(?:\.\d{1,2})?$/.test(raw)){ if(msg) msg.textContent="请输入正确金额，最多保留两位小数"; return; }
   const price=+raw;
@@ -859,21 +1092,28 @@ $("#btnBatch").addEventListener("click",()=>{
   const items=state.filter(it=>selected.has(it.id));
   if(!items.length) return;
   if(!AUTH.logged_in){ toast("需要先登录 Steam","点上面「账号密码登录」或「粘贴 Cookie 登录」","warn"); return; }
-  const locked=items.filter(it=>it.status==="listed"||it.status==="pending"||(+it.steam_listing_count||0)>0);
-  const priced=items.filter(it=>+it.net>0 && !locked.includes(it));
-  const noPrice=items.filter(it=>!it.net||+it.net<=0);
+  const locked=items.filter(isListLocked);
+  const noInventory=items.filter(it=>!isListLocked(it) && !inventoryCheck(it).ok);
+  const priced=items.filter(it=>+it.net>0 && !isListLocked(it) && inventoryCheck(it).ok);
+  const noPrice=items.filter(it=>(!it.net||+it.net<=0) && !isListLocked(it) && inventoryCheck(it).ok);
   let total=0, listN=0;
   priced.forEach(it=>{ const q=+it.operation_qty||1; total+=(it.net||0)*q; listN+=q; });
   const rows=items.map(it=>{ const q=+it.operation_qty||1;
-    return `<li><span class="bn">${esc(it.name)}${q>1?' ×'+q:''}</span>`+
-     (+it.net>0
-       ? `<span class="bp">买家 ${fmt(it.listing)} · 到手 ${fmt(it.net)}${q>1?' ×'+q+' = '+fmt((it.net||0)*q):''}</span>`
-       : `<span class="need">没填有效上架价，跳过</span>`)+`</li>`;
+    const inv=inventoryCheck(it);
+    const detail=isListLocked(it)
+      ? `<span class="need">已挂出或待确认，跳过</span>`
+      : !inv.ok
+        ? `<span class="need">${esc(inv.msg)}，跳过</span>`
+        : +it.net>0
+          ? `<span class="bp">买家 ${fmt(it.listing)} · 到手 ${fmt(it.net)}${q>1?' ×'+q+' = '+fmt((it.net||0)*q):''}</span>`
+          : `<span class="need">没填有效上架价，跳过</span>`;
+    return `<li><span class="bn">${esc(it.name)}${q>1?' ×'+q:''}</span>${detail}</li>`;
   }).join("");
   const body=`<p class="muted">按各自“到手价”挂到 Steam 市场，共 <b>${listN}</b> 个单；每个单独挂、到你 <b>Steam 手机令牌</b> 里<b>逐笔确认</b>（本工具不自动确认）。</p>
     <ul class="blist">${rows}</ul>
     <div class="btotal"><span>合计到手（${listN} 个单）</span><span class="bp">${fmt(total)}</span></div>
     ${noPrice.length?`<p class="muted" style="margin-top:8px;color:var(--warn)">有 ${noPrice.length} 件没有有效上架价，会被跳过。</p>`:""}
+    ${noInventory.length?`<p class="muted" style="margin-top:8px;color:var(--warn)">有 ${noInventory.length} 种库存不足或库存为 0，将跳过；请先同步 Steam 库存。</p>`:""}
     ${locked.length?`<p class="muted" style="margin-top:8px;color:var(--warn)">有 ${locked.length} 种已经挂出或待确认，将跳过。</p>`:""}`;
   openModal(`确认批量上架 ${listN} 件`, body, [
     {label:"取消", on:closeModal},
@@ -881,7 +1121,9 @@ $("#btnBatch").addEventListener("click",()=>{
   ]);
 });
 async function confirmBatch(ids){
-  if(!ids.length){ closeModal(); toast("没有可上架的","选中的都没填购入价","warn"); return; }
+  const validIds=ids.filter(id=>{ const it=state.find(x=>x.id===id); return it && !isListLocked(it) && inventoryCheck(it).ok && +it.net>0; });
+  if(!validIds.length){ closeModal(); toast("没有可上架的","选中物品没有库存、库存不足、已挂出，或未填写有效上架价","warn"); return; }
+  ids=validIds;
   const ov=$("#ov"); const btn=ov&&ov.querySelector('[data-i="1"]');
   if(btn){ btn.disabled=true; btn.innerHTML='<span class="spin"></span>上架中…'; }
   try{
@@ -908,15 +1150,20 @@ async function runBackgroundJob(action,ids,btn,label){
 }
 
 $("#btnListConfirm").addEventListener("click",()=>{
-  const items=state.filter(it=>selected.has(it.id) && +it.net>0 && it.status!=="listed" && it.status!=="pending" && !(+it.steam_listing_count||0));
-  if(!items.length){ toast("没有可上架物品","先填写上架价","warn"); return; }
+  const chosen=state.filter(it=>selected.has(it.id));
+  const items=chosen.filter(it=>+it.net>0 && !isListLocked(it) && inventoryCheck(it).ok);
+  if(!items.length){ toast("没有可上架物品","选中物品没有库存、库存不足、已挂出，或未填写有效上架价","warn"); return; }
+  const skipped=chosen.length-items.length;
   openModal("上架并批量确认",`<p>将上架所选物品，并使用账号设置中的 maFile 自动确认本次市场出售。</p>
-    <p class="muted">只确认本次上架返回的市场挂单编号，不会确认交易报价。令牌文件必须包含 identity_secret 和 device_id。</p>`,[
+    <p class="muted">只确认本次上架返回的市场挂单编号，不会确认交易报价。令牌文件必须包含 identity_secret 和 device_id。</p>
+    ${skipped?`<p class="muted" style="color:var(--warn)">有 ${skipped} 种物品因无库存、库存不足、已挂出或价格无效而跳过。</p>`:""}`,[
     {label:"取消",on:closeModal},
     {label:"确认执行",cls:"go",on:()=>runListConfirmFlow(items.map(x=>x.id))},
   ]);
 });
 async function runListConfirmFlow(ids){
+  ids=ids.filter(id=>{ const it=state.find(x=>x.id===id); return it && !isListLocked(it) && inventoryCheck(it).ok && +it.net>0; });
+  if(!ids.length){ closeModal(); toast("不能执行","可上架库存为 0 或数量不足","warn"); return; }
   const ov=$("#ov"), btn=ov&&ov.querySelector('.actions [data-i="1"]');
   if(btn){ btn.disabled=true; btn.innerHTML='<span class="spin"></span>正在上架…'; }
   try{
@@ -1444,6 +1691,66 @@ loadConfig()
   .then(loadSecret).then(loadSettings).then(refreshAuth).then(load)
   .then(ok=>{ if(ok===false) toast("后端没连上","请用「启动倒货台.bat」启动，浏览器开 http://127.0.0.1:8777","err"); })
   .then(()=>{ setInterval(poll,15000); setInterval(refreshAuth,30000); checkSession(); });
+
+/* UI convenience: search + compact/full columns */
+let TABLE_QUERY = "";
+function applyTableFilter(){
+  const q=TABLE_QUERY.trim().toLowerCase();
+  document.querySelectorAll("#rows tr").forEach(tr=>{
+    const it=state.find(x=>String(x.id)===String(tr.dataset.id));
+    const hay=it ? [it.name,gameName(it.appid),statusText(it.status),it.last_msg].join(" ").toLowerCase() : tr.textContent.toLowerCase();
+    tr.style.display=!q||hay.includes(q)?"":"none";
+  });
+}
+const itemSearch=document.getElementById("itemSearch");
+if(itemSearch) itemSearch.addEventListener("input",e=>{TABLE_QUERY=e.target.value;applyTableFilter();});
+const viewToggle=document.getElementById("viewToggle");
+const tableScroll=document.getElementById("tableScroll");
+if(viewToggle&&tableScroll){
+  const savedFull=localStorage.getItem("skindesk_full_columns")==="1";
+  tableScroll.classList.toggle("compact-view",!savedFull);
+  viewToggle.textContent=savedFull?"精简字段":"显示完整字段";
+  viewToggle.addEventListener("click",()=>{
+    const compact=tableScroll.classList.toggle("compact-view");
+    viewToggle.textContent=compact?"显示完整字段":"精简字段";
+    localStorage.setItem("skindesk_full_columns",compact?"0":"1");
+  });
+}
+
+
+/* 顶部导航：展开目标区域、滚动并聚焦 */
+(function initTopNavigation(){
+  const nav=document.querySelector('.topnav');
+  if(!nav) return;
+  const links=[...nav.querySelectorAll('a[href^="#"]')];
+  function markActive(current){
+    links.forEach(a=>a.classList.toggle('active',a===current));
+  }
+  function reveal(el){
+    el.classList.remove('nav-flash');
+    void el.offsetWidth;
+    el.classList.add('nav-flash');
+    setTimeout(()=>el.classList.remove('nav-flash'),950);
+  }
+  links.forEach(link=>link.addEventListener('click',e=>{
+    const target=document.querySelector(link.getAttribute('href'));
+    if(!target) return;
+    e.preventDefault();
+    if(target.id==='setPanel') target.open=true;
+    target.scrollIntoView({behavior:'smooth',block:'start'});
+    markActive(link);
+    reveal(target);
+    if(target.id==='addForm'){
+      setTimeout(()=>target.elements && target.elements.name && target.elements.name.focus({preventScroll:true}),380);
+    }else if(target.id==='setPanel'){
+      setTimeout(()=>{
+        const first=target.querySelector('input,select,button');
+        if(first) first.focus({preventScroll:true});
+      },380);
+    }
+  }));
+})();
+
 </script>
 </body>
 </html>
