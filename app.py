@@ -146,6 +146,23 @@ def apply_steam_proxy():
 apply_steam_proxy()
 
 
+def friendly_steam_error(e):
+    """把 requests/Steam 的底层网络错误翻译成前端能看懂的提示。"""
+    msg = str(e)
+    low = msg.lower()
+    if "certificate_verify_failed" in low or "sslcertverificationerror" in low:
+        return ("Steam HTTPS 证书校验失败。通常是本机加速器/代理重签了 steamcommunity.com 证书，"
+                "但系统不信任它。处理方式：优先安装代理工具的根证书；或在账号设置里勾选"
+                "“兼容本机加速器证书（关闭 HTTPS 证书校验）”后保存再重试。")
+    if "connecttimeout" in low or "read timed out" in low or "timed out" in low:
+        return ("连接 Steam 超时。请确认加速器已覆盖 Steam 社区/市场，或填写可用的本地 HTTP 代理端口，"
+                "例如 http://127.0.0.1:7890。")
+    if "connectionreseterror" in low or "10054" in low:
+        return ("连接被远程重置。常见于加速器没有接管 Python 程序流量，或 Steam 社区出口不稳定。"
+                "建议选择 Steam 社区/市场加速，或改用带本地 HTTP 代理端口的工具。")
+    return msg
+
+
 # ------------------- 持久化 -------------------
 def save_items():
     try:
@@ -779,7 +796,7 @@ def api_delist_batch():
         except NeedAuth:
             return jsonify({"error": "need_auth"}), 401
         except Exception as e:
-            return jsonify({"error": str(e)}), 502
+            return jsonify({"error": friendly_steam_error(e)}), 502
         results = []
         for it in targets:
             matches = [x for x in listings if x["name"] == it["name"] and x["appid"] == item_appid(it)]
@@ -828,7 +845,7 @@ def api_delist_preview():
     except NeedAuth:
         return jsonify({"error": "need_auth"}), 401
     except Exception as e:
-        return jsonify({"error": str(e)}), 502
+        return jsonify({"error": friendly_steam_error(e)}), 502
     rows = []
     for it in targets:
         count = sum(1 for x in listings if x["name"] == it["name"] and x["appid"] == item_appid(it))
@@ -859,7 +876,7 @@ def api_cleanup_pending_batch():
     except NeedAuth:
         return jsonify({"error": "need_auth"}), 401
     except Exception as e:
-        return jsonify({"error": str(e)}), 502
+        return jsonify({"error": friendly_steam_error(e)}), 502
     _INV_CACHE.clear()
     with LOCK:
         for it in targets:
@@ -894,7 +911,7 @@ def api_steam_sync():
     except NeedAuth:
         return jsonify({"error": "need_auth"}), 401
     except Exception as e:
-        return jsonify({"error": str(e)}), 502
+        return jsonify({"error": friendly_steam_error(e)}), 502
 
     now = time.time()
     result = []
