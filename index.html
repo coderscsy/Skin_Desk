@@ -218,7 +218,7 @@
        border:1px solid color-mix(in srgb,var(--line) 72%,transparent);line-height:1.45}
 
   /* toast */
-  #toasts{position:fixed;right:18px;bottom:18px;display:flex;flex-direction:column;gap:10px;z-index:60;max-width:420px}
+  #toasts{position:fixed;right:18px;top:88px;display:flex;flex-direction:column;gap:10px;z-index:60;max-width:360px}
   .toast{position:relative;background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--accent);
          color:var(--text);padding:12px 38px 12px 42px;border-radius:12px;font-size:13px;box-shadow:var(--shadow);
          animation:slidein .18s ease-out}
@@ -330,7 +330,6 @@
     <div class="section-title">
       新增监控物品
       <span class="hint">填“上架价”即可直接用于上架；游戏掉落成本填 0</span>
-      <button class="btn ghost sm" id="btnInvTop" type="button">从 Steam 库存选择</button>
     </div>
     <div class="f"><label>游戏</label><select name="appid" id="addGame"></select></div>
     <div class="f"><label>物品英文名 (market hash name)</label>
@@ -1043,8 +1042,7 @@ async function applyBatchPrice(ids){
 
 /* ---------------- 从 Steam 库存选择 ---------------- */
 let INV_ITEMS=[];
-$("#btnInv").addEventListener("click",()=>openInventoryPicker({appid:APP_SETTINGS.inventory_appid||730, autoLoadDefault:true}));
-$("#btnInvTop").addEventListener("click",()=>openInventoryPicker({appid:+($("#addGame")&&$("#addGame").value||APP_SETTINGS.inventory_appid||730), autoLoadDefault:true}));
+$("#btnInv").addEventListener("click",()=>openInventoryPicker({appid:+($("#addGame")&&$("#addGame").value||APP_SETTINGS.inventory_appid||730), autoLoadDefault:true}));
 function openInventoryPicker(opts={}){
   if(!AUTH.logged_in || !AUTH.steamid){ toast("先登录 Steam","登录一次拿到你的 steamid，才能拉库存","warn"); return; }
   const initialAppid=+(opts.appid||APP_SETTINGS.inventory_appid||730);
