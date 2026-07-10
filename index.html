@@ -350,11 +350,12 @@
     </div>
     <div class="group">
       <button class="btn ghost" id="btnInv" type="button">从 Steam 库存选择</button>
+      <button class="btn ghost" id="btnPriceRefresh" type="button">刷新价格</button>
       <button class="btn ghost" id="btnRecheck" type="button" title="用库存核对：取消了的挂单会回到库存，状态改回盯价中">核对挂单</button>
       <button class="btn ghost" id="btnSteamSync" type="button">同步 Steam</button>
       <button class="btn ghost" id="btnHistory" type="button">操作记录</button>
     </div>
-    <span class="selinfo" id="selInfo">从库存选择物品后，只需填写“上架价”；勾选后即可批量上架，再去手机令牌确认。</span>
+    <span class="selinfo" id="selInfo">从库存选择物品后，只需填写“上架价”；价格默认用缓存，需要时点“刷新价格”。</span>
   </div>
 
   <div class="scroll">
@@ -1161,6 +1162,24 @@ async function syncSteam(silent=false){
   finally{ steamSyncing=false; if(btn){btn.disabled=false;btn.textContent=old||"同步 Steam";} }
 }
 $("#btnSteamSync").addEventListener("click",()=>syncSteam(false));
+$("#btnPriceRefresh").addEventListener("click",async ()=>{
+  const btn=$("#btnPriceRefresh"), old=btn&&btn.textContent;
+  if(btn){ btn.disabled=true; btn.textContent="刷新中…"; }
+  try{
+    const r=await fetch("/api/prices/refresh",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({force:true})});
+    const j=await r.json();
+    if(!r.ok || j.error) throw new Error(j.error||"刷新失败");
+    await load();
+    const parts=[`成功 ${j.refreshed||0}`];
+    if(j.limited) parts.push(`限流 ${j.limited}`);
+    if(j.errors) parts.push(`失败 ${j.errors}`);
+    toast("价格刷新完成",`${parts.join(" · ")} · 共 ${j.total||0} 种；限流时会保留缓存价格`,j.limited||j.errors?"warn":"ok");
+  }catch(err){
+    toast("价格刷新失败",err.message||"后端没响应","err");
+  }finally{
+    if(btn){ btn.disabled=false; btn.textContent=old||"刷新价格"; }
+  }
+});
 $("#btnHistory").addEventListener("click",async ()=>{
   try{
     const rows=await (await fetch("/api/operations?limit=100")).json();

@@ -270,6 +270,43 @@ def price_refresher():
         time.sleep(15)
 
 
+def refresh_prices_once(force=False):
+    """手动刷新当前监控表价格；失败时保留旧成功价格。"""
+    refreshed = 0
+    limited = 0
+    errors = 0
+    with LOCK:
+        keys = sorted({(item_appid(it), it["name"]) for it in ITEMS})
+    for appid, name in keys:
+        c = PRICE_CACHE.get((appid, name))
+        if (not force) and c and (time.time() - c.get("ts", 0) <= CONFIG["cache_ttl"]):
+            continue
+        res = fetch_steam_price(name, appid)
+        res["ts"] = time.time()
+        if res.get("error") == "rate_limited":
+            limited += 1
+        elif res.get("error"):
+            errors += 1
+        else:
+            refreshed += 1
+        if res.get("error") and c and c.get("lowest") is not None:
+            keep = dict(c)
+            keep.update({
+                "error": res.get("error"),
+                "ts": res["ts"],
+                "stale": True,
+                "last_success_ts": c.get("last_success_ts") or c.get("ts"),
+            })
+            PRICE_CACHE[(appid, name)] = keep
+        else:
+            if not res.get("error"):
+                res["stale"] = False
+                res["last_success_ts"] = res["ts"]
+            PRICE_CACHE[(appid, name)] = res
+        time.sleep(20)
+    return {"refreshed": refreshed, "limited": limited, "errors": errors, "total": len(keys)}
+
+
 # ------------------- 计算 -------------------
 def steam_fees_cents(net_cents, fee_percent=15):
     """按 Steam 实际的整分取整和最低 1 分规则计算费用。"""
@@ -559,6 +596,17 @@ def api_config():
 def api_get_items():
     with LOCK:
         return jsonify([item_view(it) for it in ITEMS])
+
+
+@app.route("/api/prices/refresh", methods=["POST"])
+def api_refresh_prices():
+    """手动刷新 Steam 最低价；避免后台频繁访问 priceoverview 导致 429。"""
+    try:
+        force = bool((request.get_json(silent=True) or {}).get("force", True))
+        result = refresh_prices_once(force=force)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": friendly_steam_error(e)}), 502
 
 
 @app.route("/api/inventory")
@@ -1291,7 +1339,6 @@ def session_keepalive():
 def main():
     load_items()
     load_settings()
-    threading.Thread(target=price_refresher, daemon=True).start()
     threading.Thread(target=scheduler, daemon=True).start()
     threading.Thread(target=session_keepalive, daemon=True).start()
     host = os.environ.get("SKINDESK_HOST") or CONFIG.get("host") or "127.0.0.1"
