@@ -120,6 +120,7 @@
         font-size:13.5px;width:146px;outline:none;border-bottom:1px solid transparent}
   .name:focus{border-bottom-color:var(--accent)}
   .sub{display:block;color:var(--muted);font-size:11px;margin-top:2px;font-family:var(--mono)}
+  .sub.stale{color:var(--warn)}
 
   td input.num{width:66px;background:transparent;border:1px solid transparent;border-radius:5px;
                color:var(--text);font-family:var(--mono);font-size:13px;text-align:right;padding:4px 5px;outline:none}
@@ -403,6 +404,14 @@ const toLocalInput = sec => { if(!sec) return ""; const d=new Date(sec*1000);
   const p=x=>String(x).padStart(2,"0");
   return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
 const fromLocalInput = v => v ? Math.floor(new Date(v).getTime()/1000) : null;
+function ago(sec){
+  if(!sec) return "";
+  const d=Math.max(0,Math.floor(Date.now()/1000-sec));
+  if(d<60) return "刚刚";
+  if(d<3600) return Math.floor(d/60)+"分钟前";
+  if(d<86400) return Math.floor(d/3600)+"小时前";
+  return Math.floor(d/86400)+"天前";
+}
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function gameOptionsHTML(sel){
   return (CFG.games||[]).map(g=>`<option value="${g.appid}" ${(+sel===+g.appid)?'selected':''}>${esc(g.name)}</option>`).join("");
@@ -505,7 +514,10 @@ function render(){
   $("#empty").style.display = state.length? "none":"block";
   for(const it of state){
     const priceErr = it.price_error;
-    const lowest = it.lowest!=null ? `<span class="price">${fmt(it.lowest)}</span>`
+    const priceNote = it.price_stale
+      ? `<span class="sub stale">${priceErr==='rate_limited'?'限流中':'价格未更新'} · 显示缓存${it.price_last_success_ts?' · '+ago(it.price_last_success_ts):''}</span>`
+      : "";
+    const lowest = it.lowest!=null ? `<span class="price">${fmt(it.lowest)}</span>${priceNote}`
       : `<span class="dim">${priceErr==='rate_limited'?'限流中':priceErr?'无数据':'…'}</span>`;
     const vol = it.volume? `<span class="sub">日成交 ${it.volume}${it.median!=null?' · 中位 '+fmt(it.median):''}</span>`:"";
     const pc = priceCells(it);

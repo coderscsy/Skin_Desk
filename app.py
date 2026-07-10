@@ -41,7 +41,7 @@ DEFAULT_CONFIG = {
     "currency": 23,            # 23 = 人民币(CNY)
     "appid": 730,             # CS2
     "port": 8777,
-    "cache_ttl": 90,          # 价格缓存秒数（别太小，Steam 限流很狠）
+    "cache_ttl": 600,         # 价格缓存秒数（Steam priceoverview 很容易限流，默认 10 分钟）
     "auto_list": False,       # True = 定时到点真的上架+自动确认
                               #   ⚠️ 违反 Steam 用户协议、有封号风险，且需令牌密钥
     "steam_api_key": "",      # https://steamcommunity.com/dev/apikey
@@ -243,17 +243,31 @@ def price_refresher():
     while True:
         try:
             with LOCK:
-                keys = list({(item_appid(it), it["name"]) for it in ITEMS})
+                keys = sorted({(item_appid(it), it["name"]) for it in ITEMS})
             for appid, name in keys:
                 c = PRICE_CACHE.get((appid, name))
                 if (not c) or (time.time() - c.get("ts", 0) > CONFIG["cache_ttl"]):
                     res = fetch_steam_price(name, appid)
                     res["ts"] = time.time()
-                    PRICE_CACHE[(appid, name)] = res
-                    time.sleep(5)  # 限流友好
+                    # 如果 Steam 限流/网络失败，但之前有成功价格，保留旧价格用于展示和参考。
+                    if res.get("error") and c and c.get("lowest") is not None:
+                        keep = dict(c)
+                        keep.update({
+                            "error": res.get("error"),
+                            "ts": res["ts"],
+                            "stale": True,
+                            "last_success_ts": c.get("last_success_ts") or c.get("ts"),
+                        })
+                        PRICE_CACHE[(appid, name)] = keep
+                    else:
+                        if not res.get("error"):
+                            res["stale"] = False
+                            res["last_success_ts"] = res["ts"]
+                        PRICE_CACHE[(appid, name)] = res
+                    time.sleep(20)  # Steam 价格接口很敏感，放慢节奏避免 429
         except Exception:
             traceback.print_exc()
-        time.sleep(3)
+        time.sleep(15)
 
 
 # ------------------- 计算 -------------------
@@ -333,6 +347,8 @@ def item_view(it):
         "volume": pc.get("volume"),
         "price_error": pc.get("error"),
         "price_ts": pc.get("ts"),
+        "price_stale": bool(pc.get("stale")),
+        "price_last_success_ts": pc.get("last_success_ts"),
     }
 
 
