@@ -9,12 +9,13 @@ echo ========================================
 echo.
 
 set "URL=http://127.0.0.1:8777"
+set "OPEN_URL=http://127.0.0.1:8777/?launcher=1"
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $r = Invoke-WebRequest -UseBasicParsing '%URL%/' -TimeoutSec 2; if ($r.Content -like '*Skin Desk*' -or $r.StatusCode -eq 200) { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>nul
 if not errorlevel 1 (
   echo Skin Desk is already running.
   echo Opening %URL% ...
-  start "" "%URL%"
+  start "" "%OPEN_URL%"
   exit /b 0
 )
 
@@ -41,7 +42,7 @@ if not exist ".venv\Scripts\python.exe" (
   echo.
 )
 
-start "" /b cmd /c "ping -n 3 127.0.0.1 >nul & start %URL%"
+start "" /b cmd /c "ping -n 3 127.0.0.1 >nul & start %OPEN_URL%"
 
 echo Starting server... your browser will open %URL%
 echo Keep this window open. Close it to stop the program.

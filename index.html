@@ -243,6 +243,12 @@
   .modal input.code{letter-spacing:6px;text-align:center;font-size:20px}
   .modal textarea{width:100%;height:90px;background:var(--panel-2);border:1px solid var(--line);color:var(--text);
         border-radius:8px;padding:10px 12px;font-family:var(--mono);font-size:12px;outline:none;resize:vertical}
+  .shutdown{position:fixed;inset:0;z-index:120;display:flex;align-items:center;justify-content:center;
+            background:rgba(11,17,24,.72);backdrop-filter:blur(10px);padding:24px}
+  .shutdown .box{max-width:420px;background:var(--panel);border:1px solid var(--line);border-radius:16px;
+                 padding:22px;box-shadow:var(--shadow);text-align:center}
+  .shutdown h2{margin:0 0 8px;color:var(--text-strong);font-size:20px}
+  .shutdown p{margin:0;color:var(--muted);line-height:1.65}
   .f2{display:flex;flex-direction:column;gap:5px}
   .f2 label{font-size:11px;color:var(--muted)}
   .f2 input{background:var(--panel-2);border:1px solid var(--line);color:var(--text);border-radius:7px;
@@ -396,6 +402,17 @@ let selected = new Set(); // 勾选要批量上架的物品 id
 let AUTH = {logged_in:false};
 let pollTimer = null;     // 自动登录轮询
 let APP_SETTINGS = {my_trade_link:"", inventory_appid:730};
+let OFFLINE_COUNT = 0;
+let LAUNCHED_BY_STARTER = false;
+
+try{
+  const qs=new URLSearchParams(location.search);
+  if(qs.get("launcher")==="1"){
+    sessionStorage.setItem("skindesk_launcher","1");
+    history.replaceState(null,"",location.pathname);
+  }
+  LAUNCHED_BY_STARTER = sessionStorage.getItem("skindesk_launcher")==="1";
+}catch(_){}
 
 function applyTheme(theme){
   const t = theme === "light" ? "light" : "dark";
@@ -483,7 +500,8 @@ async function load(force=false){
   if(!force && hasActiveEditor()) return true;
   let items;
   try{ items = await (await fetch("/api/items")).json(); }
-  catch(e){ setLive(false,"后端没连上"); return false; }
+  catch(e){ handleBackendOffline(); return false; }
+  OFFLINE_COUNT = 0;
   setLive(true);
   state = items;
   // 清掉已不存在的勾选
@@ -497,6 +515,23 @@ function setLive(ok,msg){
   const d=$("#dot"); d.className = "dot"+(ok?" on":"");
   setTimeout(()=>{ if(ok) d.className="dot on"; },10);
   $("#livetxt").textContent = msg || ("实时 · 币种 "+(CFG.currency===23?"CNY":CFG.currency));
+}
+
+function handleBackendOffline(){
+  OFFLINE_COUNT++;
+  setLive(false,"服务已关闭");
+  if(!LAUNCHED_BY_STARTER || OFFLINE_COUNT < 2) return;
+  try{ window.close(); }catch(_){}
+  setTimeout(showShutdownNotice,450);
+}
+
+function showShutdownNotice(){
+  if(document.getElementById("shutdownNotice")) return;
+  const d=document.createElement("div");
+  d.id="shutdownNotice";
+  d.className="shutdown";
+  d.innerHTML=`<div class="box"><h2>倒货台服务已关闭</h2><p>启动台/控制台已经退出，网页会自动尝试关闭。<br>如果浏览器拦截了自动关闭，请手动关闭这个标签页。</p></div>`;
+  document.body.appendChild(d);
 }
 
 function summary(){
