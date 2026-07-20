@@ -16,6 +16,7 @@ import os
 import re
 import json
 import time
+import html
 import threading
 import traceback
 from datetime import datetime, timezone
@@ -34,6 +35,7 @@ DATA_FILE = os.path.join(DATA_DIR, "watchlist.json")
 CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
 OPERATIONS_FILE = os.path.join(DATA_DIR, "operations.json")
+PRICE_CACHE_FILE = os.path.join(DATA_DIR, "price_cache.json")
 SECRET_FILE = os.path.join(DATA_DIR, "secret.json")   # 网页里填的账号/密钥（本机、勿外传）
 STEAM_LOGIN_FILE = os.path.join(DATA_DIR, "steam_login.json")  # 缓存 Steam 网页登录态（本机、勿外传）
 
@@ -43,6 +45,7 @@ DEFAULT_CONFIG = {
     "appid": 730,             # CS2
     "port": 8777,
     "cache_ttl": 600,         # 价格缓存秒数（Steam priceoverview 很容易限流，默认 10 分钟）
+    "buff_enabled": True,     # True = 刷新价格时同时拉 BUFF 参考价；仅作参考，不参与自动上架计算
     "auto_list": False,       # True = 定时到点真的上架+自动确认
                               #   ⚠️ 违反 Steam 用户协议、有封号风险，且需令牌密钥
     "steam_api_key": "",      # https://steamcommunity.com/dev/apikey
@@ -115,6 +118,7 @@ ITEMS = []                # 监控列表
 OPERATIONS = []           # 最近操作流水
 JOBS = {}                 # 后台批量任务
 PRICE_CACHE = {}          # name -> {lowest, median, volume, error, ts}
+PRICE_OVERVIEW_COOLDOWN_UNTIL = 0
 HISTORY_CACHE = {}        # (appid, name) -> {points, ts, error, cooldown_until}
 _steam_client = None      # 复用的 steampy 客户端（仅旧的“送出/发货”用）
 
@@ -204,6 +208,83 @@ def load_items():
             OPERATIONS = []
 
 
+def load_price_cache():
+    """恢复上次成功/可展示的价格，避免程序重启后最低价全部变空。"""
+    global PRICE_CACHE
+    if not os.path.exists(PRICE_CACHE_FILE):
+        return
+    try:
+        rows = json.load(open(PRICE_CACHE_FILE, encoding="utf-8"))
+        restored = {}
+        for row in rows if isinstance(rows, list) else []:
+            appid = int(row.get("appid", 730) or 730)
+            name = str(row.get("name") or "").strip()
+            if not name:
+                continue
+            data = {k: v for k, v in row.items() if k not in ("appid", "name")}
+            if data.get("price_text") and data.get("price_cny_estimate") is None:
+                estimate, source = estimate_cny_from_steam_page_price({
+                    "currency": data.get("price_currency"),
+                    "currency_name": data.get("price_currency_name"),
+                    "cents": round((parse_price(str(data.get("price_text") or "")) or 0) * 100),
+                })
+                if estimate is not None:
+                    data["price_cny_estimate"] = estimate
+                    data["price_cny_estimate_source"] = source
+            if data.get("lowest") is not None or data.get("price_text"):
+                restored[(appid, name)] = data
+        PRICE_CACHE = restored
+    except Exception as e:
+        print("price_cache 读取失败，忽略：", e)
+
+
+def save_price_cache():
+    rows = []
+    for (appid, name), data in PRICE_CACHE.items():
+        if data.get("lowest") is None and not data.get("price_text") and data.get("buff_price") is None:
+            continue
+        rows.append({"appid": appid, "name": name, **data})
+    tmp = PRICE_CACHE_FILE + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(rows, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, PRICE_CACHE_FILE)
+    except Exception as e:
+        print("price_cache 保存失败：", e)
+
+
+def _has_display_price(row):
+    return bool(row and (row.get("lowest") is not None or row.get("price_text")
+                         or row.get("buff_price") is not None))
+
+
+def _store_price_result(key, result, previous=None):
+    result = dict(result)
+    result["ts"] = time.time()
+    if result.get("error") and _has_display_price(previous):
+        keep = dict(previous)
+        keep.update({
+            "error": result.get("error"),
+            "ts": result["ts"],
+            "stale": True,
+            "last_success_ts": previous.get("last_success_ts") or previous.get("ts"),
+        })
+        # JSON 接口限流时，仍保留官方商品页能看到的出口币种价格作为旁注。
+        for field in ("price_text", "price_currency", "price_currency_name", "price_cny_estimate",
+                      "price_cny_estimate_source", "source", "warning",
+                      "buff_price", "buff_goods_id", "buff_sell_num", "buff_steam_price_cny",
+                      "buff_error", "buff_ts"):
+            if result.get(field) is not None:
+                keep[field] = result[field]
+        PRICE_CACHE[key] = keep
+    else:
+        if not result.get("error"):
+            result["stale"] = False
+            result["last_success_ts"] = result["ts"]
+        PRICE_CACHE[key] = result
+    save_price_cache()
+
+
 # ------------------- 价格 -------------------
 def parse_price(s):
     if not s:
@@ -213,31 +294,209 @@ def parse_price(s):
     return float(m.group()) if m else None
 
 
+def parse_buff_goods_payload(payload, name):
+    """从 BUFF market/goods 响应中取精确 market_hash_name 的卖一参考价。"""
+    data = payload.get("data") if isinstance(payload, dict) else {}
+    items = data.get("items") if isinstance(data, dict) else []
+    if not isinstance(items, list):
+        return None
+    target = (name or "").strip().lower()
+    chosen = None
+    for row in items:
+        if not isinstance(row, dict):
+            continue
+        market_hash_name = str(row.get("market_hash_name") or "").strip().lower()
+        if market_hash_name == target:
+            chosen = row
+            break
+        if chosen is None:
+            chosen = row
+    if not chosen:
+        return None
+    price = parse_price(str(chosen.get("sell_min_price") or chosen.get("sell_reference_price") or ""))
+    if price is None:
+        return None
+    steam_cny = parse_price(str(chosen.get("steam_price_cny") or ""))
+    return {
+        "buff_price": price,
+        "buff_goods_id": chosen.get("id"),
+        "buff_sell_num": chosen.get("sell_num"),
+        "buff_steam_price_cny": steam_cny,
+        "buff_ts": time.time(),
+    }
+
+
+def fetch_buff_reference_price(name, appid=None):
+    """读取 BUFF 参考价。只支持 CS2/CSGO，失败不影响 Steam 主价。"""
+    if not CONFIG.get("buff_enabled", True):
+        return {}
+    appid = int(appid or CONFIG["appid"])
+    if appid != 730:
+        return {}
+    try:
+        r = SESSION.get(
+            "https://buff.163.com/api/market/goods",
+            params={
+                "game": "csgo",
+                "page_num": 1,
+                "page_size": 10,
+                "search": name,
+                "sort_by": "price.asc",
+            },
+            headers={
+                "User-Agent": "Mozilla/5.0",
+                "Referer": "https://buff.163.com/market/csgo",
+            },
+            timeout=12,
+        )
+        if r.status_code != 200:
+            return {"buff_error": f"buff_http_{r.status_code}"}
+        row = parse_buff_goods_payload(r.json(), name)
+        return row or {"buff_error": "buff_no_data"}
+    except Exception as e:
+        return {"buff_error": f"buff_{e}"}
+
+
+def attach_buff_reference(result, name, appid):
+    result = dict(result or {})
+    buff = fetch_buff_reference_price(name, appid)
+    if buff:
+        result.update(buff)
+    return result
+
+
+PRICE_CURRENCY_NAMES = {
+    1: "USD", 3: "EUR", 5: "RUB", 8: "GBP", 13: "SGD", 20: "CAD",
+    21: "AUD", 22: "NZD", 23: "CNY", 29: "HKD", 30: "TWD",
+}
+
+# Steam 页面 fallback 只用于参考。这里用保守固定汇率做离线换算，避免非 CNY 被误当主价。
+# 后续如果接在线汇率，只需要替换 estimate_cny_from_steam_page_price 的 rate 来源。
+PRICE_TO_CNY_FIXED_RATES = {
+    1: 7.25,   # USD
+    3: 7.90,   # EUR
+    8: 9.20,   # GBP
+    13: 5.40,  # SGD
+    20: 5.30,  # CAD
+    21: 4.75,  # AUD
+    22: 4.35,  # NZD
+    29: 0.93,  # HKD
+    30: 0.23,  # TWD
+}
+PRICE_CURRENCY_IDS = {v: k for k, v in PRICE_CURRENCY_NAMES.items()}
+
+
+def currency_id_from_any(value):
+    if value is None:
+        return 0
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return PRICE_CURRENCY_IDS.get(str(value).strip().upper(), 0)
+
+
+def estimate_cny_from_steam_page_price(page_price):
+    currency_id = currency_id_from_any(page_price.get("currency") or page_price.get("currency_name"))
+    cents = int(page_price.get("cents") or 0)
+    if currency_id == int(CONFIG["currency"]):
+        return cents / 100, "native_cny"
+    rate = PRICE_TO_CNY_FIXED_RATES.get(currency_id)
+    if not rate or cents <= 0:
+        return None, None
+    return round(cents / 100 * rate, 2), "fixed_rate"
+
+
+def parse_listing_page_price(page):
+    """从 Steam 新版 SSR 商品页提取最低卖价；该页面在 JSON 接口 429 时通常仍可访问。"""
+    idx = page.rfind("amtMinSellOrder")
+    if idx < 0:
+        return None
+    chunk = page[idx:idx + 500]
+    amount = re.search(r"amtMinSellOrder[^0-9]{1,40}(\d+)", chunk)
+    currency = re.search(r"eCurrency[^0-9]{1,40}(\d+)", chunk)
+    if not amount or not currency:
+        return None
+    text_match = re.search(r"for sale starting at\s*<[^>]+>([^<]+)", page, re.I)
+    sell_count = re.search(r"cSellOrders[^0-9]{1,40}(\d+)", chunk)
+    currency_id = int(currency.group(1))
+    cents = int(amount.group(1))
+    return {
+        "cents": cents,
+        "currency": currency_id,
+        "currency_name": PRICE_CURRENCY_NAMES.get(currency_id, str(currency_id)),
+        "text": html.unescape(text_match.group(1)).strip() if text_match else None,
+        "volume": sell_count.group(1) if sell_count else None,
+    }
+
+
+def fetch_listing_page_price(name, appid, original_error):
+    try:
+        r = SESSION.get(
+            f"https://steamcommunity.com/market/listings/{appid}/{quote(name, safe='')}",
+            params={"l": "english"}, timeout=20)
+        if r.status_code != 200:
+            return {"error": original_error or f"page_http_{r.status_code}"}
+        page_price = parse_listing_page_price(r.text)
+        if not page_price:
+            return {"error": original_error or "page_no_data"}
+        result = {
+            "price_text": page_price["text"],
+            "price_currency": page_price["currency"],
+            "price_currency_name": page_price["currency_name"],
+            "volume": page_price["volume"],
+            "source": "listing_page",
+        }
+        estimate, estimate_source = estimate_cny_from_steam_page_price(page_price)
+        if estimate is not None:
+            result["price_cny_estimate"] = estimate
+            result["price_cny_estimate_source"] = estimate_source
+        if page_price["currency"] == int(CONFIG["currency"]):
+            result.update({"lowest": page_price["cents"] / 100, "error": None})
+        else:
+            # 不把 SGD 等出口币种冒充成人民币，也不用于自动建议上架价。
+            result.update({"lowest": None, "error": original_error or "currency_mismatch",
+                           "warning": "fallback_currency"})
+        return result
+    except Exception as e:
+        return {"error": original_error or str(e)}
+
+
 def fetch_steam_price(name, appid=None):
+    global PRICE_OVERVIEW_COOLDOWN_UNTIL
+    appid = int(appid or CONFIG["appid"])
     params = {
         "country": "CN",
         "currency": CONFIG["currency"],
-        "appid": int(appid or CONFIG["appid"]),
+        "appid": appid,
         "market_hash_name": name,
     }
-    try:
-        r = SESSION.get("https://steamcommunity.com/market/priceoverview/",
-                        params=params, timeout=15)
-        if r.status_code == 429:
-            return {"error": "rate_limited"}
-        if r.status_code != 200:
-            return {"error": f"http_{r.status_code}"}
-        d = r.json()
-        if not d.get("success"):
-            return {"error": "no_data"}
-        return {
-            "lowest": parse_price(d.get("lowest_price")),
-            "median": parse_price(d.get("median_price")),
-            "volume": d.get("volume"),
-            "error": None,
-        }
-    except Exception as e:
-        return {"error": str(e)}
+    original_error = "rate_limited" if PRICE_OVERVIEW_COOLDOWN_UNTIL > time.time() else None
+    if not original_error:
+        try:
+            r = SESSION.get("https://steamcommunity.com/market/priceoverview/",
+                            params=params, timeout=15)
+            if r.status_code == 429:
+                PRICE_OVERVIEW_COOLDOWN_UNTIL = time.time() + 1800
+                original_error = "rate_limited"
+            elif r.status_code != 200:
+                original_error = f"http_{r.status_code}"
+            else:
+                d = r.json()
+                if d.get("success") and parse_price(d.get("lowest_price")) is not None:
+                    return attach_buff_reference({
+                        "lowest": parse_price(d.get("lowest_price")),
+                        "median": parse_price(d.get("median_price")),
+                        "volume": d.get("volume"),
+                        "source": "priceoverview",
+                        "error": None,
+                    }, name, appid)
+                original_error = "no_data"
+        except Exception as e:
+            original_error = str(e)
+    result = fetch_listing_page_price(name, appid, original_error)
+    if original_error == "rate_limited":
+        result["retry_after"] = max(0, int(PRICE_OVERVIEW_COOLDOWN_UNTIL - time.time()))
+    return attach_buff_reference(result, name, appid)
 
 
 def price_refresher():
@@ -250,23 +509,8 @@ def price_refresher():
                 c = PRICE_CACHE.get((appid, name))
                 if (not c) or (time.time() - c.get("ts", 0) > CONFIG["cache_ttl"]):
                     res = fetch_steam_price(name, appid)
-                    res["ts"] = time.time()
-                    # 如果 Steam 限流/网络失败，但之前有成功价格，保留旧价格用于展示和参考。
-                    if res.get("error") and c and c.get("lowest") is not None:
-                        keep = dict(c)
-                        keep.update({
-                            "error": res.get("error"),
-                            "ts": res["ts"],
-                            "stale": True,
-                            "last_success_ts": c.get("last_success_ts") or c.get("ts"),
-                        })
-                        PRICE_CACHE[(appid, name)] = keep
-                    else:
-                        if not res.get("error"):
-                            res["stale"] = False
-                            res["last_success_ts"] = res["ts"]
-                        PRICE_CACHE[(appid, name)] = res
-                    time.sleep(20)  # Steam 价格接口很敏感，放慢节奏避免 429
+                    _store_price_result((appid, name), res, c)
+                    time.sleep(2 if res.get("source") == "listing_page" else 20)
         except Exception:
             traceback.print_exc()
         time.sleep(15)
@@ -277,6 +521,8 @@ def refresh_prices_once(force=False):
     refreshed = 0
     limited = 0
     errors = 0
+    fallback = 0
+    buff = 0
     with LOCK:
         keys = sorted({(item_appid(it), it["name"]) for it in ITEMS})
     for appid, name in keys:
@@ -284,29 +530,20 @@ def refresh_prices_once(force=False):
         if (not force) and c and (time.time() - c.get("ts", 0) <= CONFIG["cache_ttl"]):
             continue
         res = fetch_steam_price(name, appid)
-        res["ts"] = time.time()
+        if res.get("price_text") and res.get("warning") == "fallback_currency":
+            fallback += 1
+        if res.get("buff_price") is not None:
+            buff += 1
         if res.get("error") == "rate_limited":
             limited += 1
         elif res.get("error"):
             errors += 1
         else:
             refreshed += 1
-        if res.get("error") and c and c.get("lowest") is not None:
-            keep = dict(c)
-            keep.update({
-                "error": res.get("error"),
-                "ts": res["ts"],
-                "stale": True,
-                "last_success_ts": c.get("last_success_ts") or c.get("ts"),
-            })
-            PRICE_CACHE[(appid, name)] = keep
-        else:
-            if not res.get("error"):
-                res["stale"] = False
-                res["last_success_ts"] = res["ts"]
-            PRICE_CACHE[(appid, name)] = res
-        time.sleep(20)
-    return {"refreshed": refreshed, "limited": limited, "errors": errors, "total": len(keys)}
+        _store_price_result((appid, name), res, c)
+        time.sleep(2 if res.get("source") == "listing_page" else 20)
+    return {"refreshed": refreshed, "limited": limited, "errors": errors, "buff": buff,
+            "fallback": fallback, "total": len(keys)}
 
 
 # ------------------- 计算 -------------------
@@ -388,7 +625,71 @@ def item_view(it):
         "price_ts": pc.get("ts"),
         "price_stale": bool(pc.get("stale")),
         "price_last_success_ts": pc.get("last_success_ts"),
+        "price_text": pc.get("price_text"),
+        "price_currency": pc.get("price_currency"),
+        "price_currency_name": pc.get("price_currency_name"),
+        "price_cny_estimate": pc.get("price_cny_estimate"),
+        "price_cny_estimate_source": pc.get("price_cny_estimate_source"),
+        "price_source": pc.get("source"),
+        "price_warning": pc.get("warning"),
+        "buff_price": pc.get("buff_price"),
+        "buff_goods_id": pc.get("buff_goods_id"),
+        "buff_sell_num": pc.get("buff_sell_num"),
+        "buff_steam_price_cny": pc.get("buff_steam_price_cny"),
+        "buff_error": pc.get("buff_error"),
+        "buff_ts": pc.get("buff_ts"),
+        "sold_at": it.get("sold_at"),
+        "sold_listing_price": it.get("sold_listing_price"),
+        "sold_net": it.get("sold_net"),
+        "sold_profit": it.get("sold_profit"),
     }
+
+
+def apply_steam_sync_state(it, inv_count, active_count, hidden_count, now=None):
+    """根据 Steam 当前库存/挂单/待确认数量更新本地状态。
+
+    已挂出/待确认的记录只有在“正式挂单=0、待确认=0、库存=0”时才判定为已售出；
+    若库存回来了，说明是下架/失败回库，恢复可编辑。
+    """
+    now = now or time.time()
+    previous_status = it.get("status")
+    submitted = max(0, int(it.get("last_listed_count", 0) or 0))
+    was_market_active = previous_status in ("listed", "pending") or submitted > 0
+
+    it["steam_inventory_count"] = inv_count
+    it["steam_listing_count"] = active_count
+    it["steam_pending_count"] = hidden_count
+    it["steam_sync_ts"] = now
+    if previous_status == "sold":
+        return it
+    actual_total = inv_count + active_count + hidden_count
+    if actual_total > 0:
+        it["qty"] = actual_total
+    if inv_count > 0:
+        it["operation_qty"] = inv_count
+
+    if hidden_count:
+        it["status"] = "pending"
+        it["last_msg"] = f"Steam 同步：正式在架 {active_count}，隐藏待确认 {hidden_count}，库存 {inv_count}"
+    elif active_count:
+        it["status"] = "listed"
+        it["needs_confirm"] = False
+        it["last_msg"] = f"Steam 同步：正式在架 {active_count}，库存 {inv_count}"
+    elif was_market_active and inv_count <= 0:
+        it["status"] = "sold"
+        it["needs_confirm"] = False
+        it.setdefault("sold_at", now)
+        calc = compute(it)
+        it["sold_listing_price"] = round(float(it.get("listing_price") or calc.get("listing") or 0), 2)
+        it["sold_net"] = round(float(calc.get("net") or 0), 2)
+        it["sold_profit"] = round(float(calc.get("profit") or 0), 2)
+        it["last_msg"] = "Steam 同步：挂单已消失且库存为 0，判定为已售出"
+    elif was_market_active and inv_count > 0:
+        it["status"] = "watching"
+        it["needs_confirm"] = False
+        it.pop("sold_at", None)
+        it["last_msg"] = f"Steam 同步：无正式挂单，{inv_count} 件在库存"
+    return it
 
 
 # ------------------- steampy 自动上架 -------------------
@@ -422,8 +723,11 @@ def do_list(it, inv=None, used=None, force=False):
     这是显式上架（手动点/批量点），不看 auto_list 开关。返回 (ok, message)。"""
     it["last_listed_count"] = 0
     it["last_failed_count"] = 0
-    if it.get("status") in ("listed", "pending") or int(it.get("steam_listing_count", 0) or 0) > 0:
-        return False, "该物品已挂出或正在等待确认，请先下架并同步 Steam 后再重新上架"
+    # 聚合行可能同时存在“部分已正式上架 + 部分仍在库存”。正式挂单不能锁死
+    # 剩余库存，否则批量上架部分失败后就永远无法补挂。真正需要串行等待的是
+    # 尚未完成的手机确认；可上架资产仍由下面的实时库存结果做最终保护。
+    if it.get("status") == "pending" or int(it.get("steam_pending_count", 0) or 0) > 0:
+        return False, "该物品仍有待确认挂单，请先完成确认或清理待确认记录后再继续上架"
     net = compute(it)["net"]
     if net <= 0:
         return False, "上架价为 0，请直接填写买家看到的上架价格"
@@ -753,6 +1057,8 @@ def api_update_item(iid):
     with LOCK:
         for it in ITEMS:
             if it["id"] == iid:
+                if it.get("status") == "sold":
+                    return jsonify({"error": "已售出记录只读，不能修改"}), 409
                 for k in ("name", "purchase", "markup", "fee", "listing_price", "sell_at", "status", "trade_url", "qty", "operation_qty", "appid"):
                     if k in body:
                         it[k] = body[k]
@@ -804,6 +1110,8 @@ def api_list_now(iid):
         it = next((x for x in ITEMS if x["id"] == iid), None)
     if not it:
         return jsonify({"error": "not found"}), 404
+    if it.get("status") == "sold":
+        return jsonify({"error": "已售出记录只读，不能再次上架"}), 409
     with STEAM_LOCK:
         ok, msg = do_list(it, force=True)
     with LOCK:
@@ -822,8 +1130,11 @@ def api_list_batch():
     ids = body.get("ids") or []
     job_id = body.get("job_id")
     with LOCK:
-        targets = [it for it in ITEMS if it["id"] in ids]
+        selected_targets = [it for it in ITEMS if it["id"] in ids]
+        targets = [it for it in selected_targets if it.get("status") != "sold"]
     if not targets:
+        if selected_targets and all(it.get("status") == "sold" for it in selected_targets):
+            return jsonify({"error": "已售出记录只读，不能批量上架"}), 409
         return jsonify({"error": "没有选中的物品"}), 400
     with STEAM_LOCK:
         try:
@@ -1085,33 +1396,7 @@ def api_steam_sync():
             inv_count = sum(1 for x in (inventories.get(appid, {}).get(name) or []) if x.get("marketable", 1))
             active_count = sum(1 for x in active_rows if x["appid"] == appid and x["name"] == name)
             hidden_count = sum(1 for x in hidden_rows if x["appid"] == appid and x["name"] == name)
-            it["steam_inventory_count"] = inv_count
-            it["steam_listing_count"] = active_count
-            it["steam_pending_count"] = hidden_count
-            it["steam_sync_ts"] = now
-            actual_total = inv_count + active_count + hidden_count
-            if actual_total > 0:
-                it["qty"] = actual_total
-            if inv_count > 0:
-                it["operation_qty"] = inv_count
-
-            submitted = max(0, int(it.get("last_listed_count", 0) or 0))
-            if hidden_count:
-                it["status"] = "pending"
-                it["last_msg"] = f"Steam 同步：正式在架 {active_count}，隐藏待确认 {hidden_count}，库存 {inv_count}"
-            elif submitted and it.get("status") in ("pending", "error") and active_count < submitted and inv_count:
-                remaining = min(inv_count, max(1, submitted - active_count))
-                it["status"] = "error"
-                it["last_failed_count"] = remaining
-                it["last_msg"] = f"Steam 同步：成功在架 {active_count}，失败回库 {remaining}；可重新上架"
-            elif active_count:
-                it["status"] = "listed"
-                it["needs_confirm"] = False
-                it["last_msg"] = f"Steam 同步：正式在架 {active_count}，库存 {inv_count}"
-            elif inv_count and it.get("status") in ("listed", "pending"):
-                it["status"] = "watching"
-                it["needs_confirm"] = False
-                it["last_msg"] = f"Steam 同步：无正式挂单，{inv_count} 件在库存"
+            apply_steam_sync_state(it, inv_count, active_count, hidden_count, now)
             result.append({"id": it["id"], "inventory": inv_count,
                            "listed": active_count, "pending": hidden_count,
                            "status": it.get("status")})
@@ -1387,6 +1672,8 @@ def api_send(iid):
         it = next((x for x in ITEMS if x["id"] == iid), None)
     if not it:
         return jsonify({"error": "not found"}), 404
+    if it.get("status") == "sold":
+        return jsonify({"ok": False, "msg": "已售出记录只读，不能送出"}), 409
     ok, msg = do_send(it)
     with LOCK:
         it["status"] = "sent" if ok else "error"
@@ -1415,8 +1702,10 @@ def session_keepalive():
 def main():
     load_items()
     load_settings()
+    load_price_cache()
     threading.Thread(target=scheduler, daemon=True).start()
     threading.Thread(target=session_keepalive, daemon=True).start()
+    threading.Thread(target=price_refresher, daemon=True).start()
     host = os.environ.get("SKINDESK_HOST") or CONFIG.get("host") or "127.0.0.1"
     if host != "127.0.0.1" and not (CONFIG.get("web_password") or ""):
         print("⚠️ 警告：绑定了非本地地址却没设 web_password——任何能连到这台机器的人都能操作你的 Steam！")

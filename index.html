@@ -52,7 +52,7 @@
   .wrap{padding:20px 24px;max-width:1840px;margin:0 auto}
 
   /* summary */
-  .summary{display:grid;grid-template-columns:repeat(3,minmax(150px,1fr));gap:12px;margin-bottom:16px;font-family:var(--mono)}
+  .summary{display:grid;grid-template-columns:repeat(5,minmax(130px,1fr));gap:12px;margin-bottom:16px;font-family:var(--mono)}
   .summary>div{background:linear-gradient(180deg,color-mix(in srgb,var(--panel) 92%,var(--accent-dim)),var(--panel));
                border:1px solid var(--line);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow)}
   .summary .k{color:var(--muted);font-size:11px;letter-spacing:1px;text-transform:uppercase;font-family:var(--ui)}
@@ -153,6 +153,7 @@
   .badge.pending{background:rgba(231,183,95,.16);color:var(--warn)}
   .badge.listed{background:rgba(95,211,141,.16);color:var(--up)}
   .badge.sent{background:rgba(95,211,141,.16);color:var(--up)}
+  .badge.sold{background:rgba(101,120,139,.22);color:var(--text)}
   .badge.error{background:rgba(232,115,107,.16);color:var(--down)}
   .cd{font-family:var(--mono);font-size:12px;color:var(--warn);margin-top:3px;display:block}
 
@@ -164,6 +165,7 @@
   .iconbtn:disabled,.iconbtn:disabled:hover{
     background:var(--disabled-bg);color:var(--disabled-text);border-color:var(--disabled-line);
   }
+  tr.readonly input,tr.readonly select{pointer-events:none;opacity:.72}
   .iconbtn.sell:hover{color:var(--up);border-color:var(--up)}
   .iconbtn.del:hover{color:var(--down);border-color:var(--down)}
   .iconbtn.send:hover{color:var(--accent);border-color:var(--accent)}
@@ -299,7 +301,7 @@
   .topnav a:hover,.topnav a.active{color:var(--text-strong);background:var(--accent-dim)}
   .banner{max-width:1520px;margin:12px auto 0;border:1px solid color-mix(in srgb,var(--warn) 28%,var(--line));border-radius:10px;padding:9px 13px;background:color-mix(in srgb,var(--warn) 8%,var(--panel));line-height:1.55}
   .wrap{padding:16px 24px 36px;max-width:1568px}
-  .summary{grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
+  .summary{grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:12px}
   .summary>div{position:relative;overflow:hidden;border-radius:12px;padding:15px 16px;box-shadow:none;background:color-mix(in srgb,var(--panel) 96%,var(--accent-dim))}
   .summary>div::after{content:"";position:absolute;right:-24px;bottom:-42px;width:94px;height:94px;border-radius:50%;background:var(--accent-dim)}
   .summary .v{font-size:22px}
@@ -383,8 +385,10 @@
 <div class="wrap" id="workspace">
   <div class="summary">
     <div><div class="k">持仓数</div><div class="v" id="s-count">0</div></div>
-    <div><div class="k">总到手</div><div class="v" id="s-net">¥0</div></div>
-    <div><div class="k">总盈亏</div><div class="v" id="s-profit">¥0</div></div>
+    <div><div class="k">本金</div><div class="v" id="s-cost">¥0</div></div>
+    <div><div class="k">预计到手</div><div class="v" id="s-net">¥0</div></div>
+    <div><div class="k">已实现盈利</div><div class="v" id="s-realized">¥0</div></div>
+    <div><div class="k">总盈利</div><div class="v" id="s-profit">¥0</div></div>
   </div>
 
   <!-- Steam 登录条（批量上架需要） -->
@@ -538,6 +542,14 @@ function initTheme(){
 initTheme();
 
 const fmt = n => (n==null||isNaN(n)) ? "—" : "¥"+Number(n).toFixed(2);
+const FX_CNY = {USD:7.25, EUR:7.90, GBP:9.20, SGD:5.40, CAD:5.30, AUD:4.75, NZD:4.35, HKD:0.93, TWD:0.23};
+function estimateCnyFromText(text,currency){
+  const cur=String(currency||"").trim().toUpperCase();
+  const rate=FX_CNY[cur];
+  const m=String(text||"").replace(/,/g,"").match(/\d+(\.\d+)?/);
+  const n=m?parseFloat(m[0]):NaN;
+  return rate && Number.isFinite(n) ? +(n*rate).toFixed(2) : null;
+}
 const toLocalInput = sec => { if(!sec) return ""; const d=new Date(sec*1000);
   const p=x=>String(x).padStart(2,"0");
   return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
@@ -558,6 +570,28 @@ function ageText(seconds){
   return Math.floor(d/86400)+"天前";
 }
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function priceRefs(it){
+  const refs=[];
+  if(it.price_text && it.lowest==null){
+    const cur=it.price_currency_name||it.price_currency||'非 CNY';
+    const cny = it.price_cny_estimate!=null ? +it.price_cny_estimate : estimateCnyFromText(it.price_text,cur);
+    if(cny!=null){
+      refs.push(`Steam 页面折算约 ${fmt(cny)} · ${esc(cur)}`);
+    }else{
+      refs.push(`Steam 页面返回非人民币币种 · ${esc(cur)}，无法折算`);
+    }
+  }
+  return refs.length ? `<span class="sub stale">参考：${refs.join(" ｜ ")}</span>` : "";
+}
+function priceDisplay(it, priceNote){
+  const steamMain = it.lowest!=null ? `<span class="price">${fmt(it.lowest)}</span>${priceNote}` : "";
+  const steamState = it.lowest==null ? `<span class="dim">${it.price_error==='rate_limited'?'Steam 限流冷却中':it.price_error?'Steam 无人民币价':'…'}</span>` : "";
+  const refs = priceRefs(it);
+  if(it.buff_price!=null){
+    return `<span class="price">${fmt(it.buff_price)}</span><span class="sub stale">BUFF 参考价${it.buff_sell_num!=null?' · 在售 '+esc(it.buff_sell_num):''}</span>${steamMain?`<span class="sub">Steam CNY ${fmt(it.lowest)}</span>`:steamState}${refs}`;
+  }
+  return steamMain ? `${steamMain}${refs}` : `${steamState}${refs}`;
+}
 function gameOptionsHTML(sel){
   return (CFG.games||[]).map(g=>`<option value="${g.appid}" ${(+sel===+g.appid)?'selected':''}>${esc(g.name)}</option>`).join("");
 }
@@ -648,13 +682,43 @@ function showShutdownNotice(){
   document.body.appendChild(d);
 }
 
+function statQty(it){
+  return Math.max(1, Number(it.status==="sold"?(it.last_listed_count||it.qty||1):(it.qty||1))||1);
+}
+function calcSummary(rows){
+  const out={count:rows.length,cost:0,net:0,realized:0,totalProfit:0,unrealized:0};
+  rows.forEach(it=>{
+    const q=statQty(it);
+    const cost=(Number(it.purchase)||0)*q;
+    out.cost+=cost;
+    if(it.status==="sold"){
+      const soldNet=Number(it.sold_net);
+      const soldProfit=Number(it.sold_profit);
+      out.net+=(Number.isFinite(soldNet)?soldNet:(Number(it.net)||0))*q;
+      const rp=Number.isFinite(soldProfit)?soldProfit:((Number(it.profit)||0));
+      out.realized+=rp*q;
+      out.totalProfit+=rp*q;
+    }else{
+      out.net+=(Number(it.net)||0)*q;
+      const up=(Number(it.profit)||0)*q;
+      out.unrealized+=up;
+      out.totalProfit+=up;
+    }
+  });
+  return out;
+}
+function signedFmt(n){ return (n>=0?"+":"")+fmt(n); }
+function setMoney(id,n,signed=false){
+  const el=$(id); el.textContent=signed?signedFmt(n):fmt(n);
+  el.className="v "+(n>0?"up":n<0?"down":"");
+}
 function summary(){
-  let net=0, profit=0;
-  state.forEach(it=>{ const q=+it.qty||1; net+=(it.net||0)*q; profit+=(it.profit||0)*q; });
-  $("#s-count").textContent = state.length;
-  $("#s-net").textContent = fmt(net);
-  const p=$("#s-profit"); p.textContent=(profit>=0?"+":"")+fmt(profit);
-  p.className = "v "+(profit>0?"up":profit<0?"down":"");
+  const s=calcSummary(state);
+  $("#s-count").textContent = s.count;
+  $("#s-cost").textContent = fmt(s.cost);
+  $("#s-net").textContent = fmt(s.net);
+  setMoney("#s-realized",s.realized,true);
+  setMoney("#s-profit",s.totalProfit,true);
 }
 
 function priceCells(it){
@@ -663,8 +727,9 @@ function priceCells(it){
   const hasCost=it.purchase!==null && it.purchase!==undefined && it.purchase!=="" && Number.isFinite(+it.purchase) && +it.purchase>=0;
   const zeroCost=hasCost && +it.purchase===0;
   const profitCls = hasCost?(it.profit>0?"up":it.profit<0?"down":"dim"):"dim";
+  const ro=it.status==="sold"?'disabled readonly title="已售出记录只读"':'';
   return {
-    listing:`<input class="num" type="text" inputmode="decimal" value="${it.listing_price||''}" data-k="listing_price" placeholder="${Number(it.listing||0).toFixed(2)}" title="直接填写买家看到的价格；留空则按购入价和余额折扣自动计算">`,
+    listing:`<input class="num" type="text" inputmode="decimal" value="${it.listing_price||''}" data-k="listing_price" placeholder="${Number(it.listing||0).toFixed(2)}" title="直接填写买家看到的价格；留空则按购入价和余额折扣自动计算" ${ro}>`,
     net:hasTarget?fmt(it.net):`<span class="need">填上架价</span>`,
     profit:hasCost?`${it.profit>=0?'+':''}${fmt(it.profit)}<span class="sub ${profitCls}">${zeroCost?'游戏掉落 · 零成本':`${it.profit>=0?'+':''}${it.profit_pct}%`}</span>`:`<span class="dim">未填成本</span>`,
     profitCls,
@@ -679,55 +744,61 @@ function inventoryCheck(it){
   return {ok:true,available,requested,msg:""};
 }
 function isListLocked(it){
-  return it.status==="listed"||it.status==="pending"||(+it.steam_listing_count||0)>0;
+  // 同名商品可以一部分已在架、一部分仍在库存；正式挂单不能锁死剩余库存。
+  return it.status==="pending"||(+it.steam_pending_count||0)>0;
 }
+function isSold(it){ return it && it.status==="sold"; }
 
 function render(){
   if(hasActiveEditor()) return;
   const tb=$("#rows"); tb.innerHTML="";
   $("#empty").style.display = state.length? "none":"block";
   for(const it of state){
+    if(isSold(it)) selected.delete(it.id);
     const priceErr = it.price_error;
     const priceNote = it.price_stale
       ? `<span class="sub stale">${priceErr==='rate_limited'?'限流中':'价格未更新'} · 显示缓存${it.price_last_success_ts?' · '+ago(it.price_last_success_ts):''}</span>`
       : "";
-    const lowest = it.lowest!=null ? `<span class="price">${fmt(it.lowest)}</span>${priceNote}`
-      : `<span class="dim">${priceErr==='rate_limited'?'限流中':priceErr?'无数据':'…'}</span>`;
+    const lowest = priceDisplay(it, priceNote);
     const vol = it.volume? `<span class="sub">日成交 ${it.volume}${it.median!=null?' · 中位 '+fmt(it.median):''}</span>`:"";
     const pc = priceCells(it);
+    const sold=isSold(it);
+    const ro=sold?'disabled readonly title="已售出记录只读"':'';
     const listLocked=isListLocked(it);
     const inv=inventoryCheck(it);
-    const listDisabled=listLocked||!inv.ok;
-    const listTitle=listLocked?"已挂出/待确认，需先下架并同步":(!inv.ok?inv.msg:"");
+    const listDisabled=sold||listLocked||!inv.ok;
+    const listTitle=sold?"已售出记录只读":(listLocked?"仍有挂单待确认，请先完成确认或清理待确认记录":(!inv.ok?inv.msg:""));
+    const hasActiveListings=(+it.steam_listing_count||0)>0;
 
     const tr=document.createElement("tr");
     tr.dataset.id=it.id;
     if(selected.has(it.id)) tr.className="sel";
+    if(sold) tr.classList.add("readonly");
     tr.innerHTML = `
-      <td class="c"><input type="checkbox" class="rowchk" data-id="${it.id}" ${selected.has(it.id)?'checked':''}></td>
-      <td><select class="gsel" data-k="appid">${gameOptionsHTML(it.appid||730)}</select></td>
-      <td class="l"><input class="name" value="${esc(it.name)}" data-k="name">${vol}</td>
-      <td><input class="num" type="number" step="1" min="1" value="${it.operation_qty||1}" data-k="operation_qty" style="width:46px">
+      <td class="c"><input type="checkbox" class="rowchk" data-id="${it.id}" ${selected.has(it.id)?'checked':''} ${sold?'disabled title="已售出记录只读"':''}></td>
+      <td><select class="gsel" data-k="appid" ${ro}>${gameOptionsHTML(it.appid||730)}</select></td>
+      <td class="l"><input class="name" value="${esc(it.name)}" data-k="name" ${ro}>${vol}</td>
+      <td><input class="num" type="number" step="1" min="1" value="${it.operation_qty||1}" data-k="operation_qty" style="width:46px" ${ro}>
         <span class="sub">总 ${(+it.steam_inventory_count||0)+(+it.steam_listing_count||0)+(+it.steam_pending_count||0)}</span>
         ${(it.steam_sync_ts?`<span class="sub">库 ${it.steam_inventory_count||0} · 架 ${it.steam_listing_count||0} · 待 ${it.steam_pending_count||0}</span>`:'')}</td>
       <td>${lowest}</td>
-      <td><input class="num" type="number" step="0.01" value="${it.purchase}" data-k="purchase"></td>
-      <td><input class="num markup-input" type="number" step="0.01" value="${it.balance_discount!=null?it.balance_discount:it.markup}" data-k="markup"></td>
+      <td><input class="num" type="number" step="0.01" value="${it.purchase}" data-k="purchase" ${ro}></td>
+      <td><input class="num markup-input" type="number" step="0.01" value="${it.balance_discount!=null?it.balance_discount:it.markup}" data-k="markup" ${ro}></td>
       <td class="cell-listing">${pc.listing}</td>
-      <td><input class="num" type="number" step="0.1" value="${it.fee}" data-k="fee"></td>
+      <td><input class="num" type="number" step="0.1" value="${it.fee}" data-k="fee" ${ro}></td>
       <td class="net cell-net">${pc.net}</td>
       <td class="cell-profit ${pc.profitCls}">${pc.profit}</td>
-      <td class="l"><input class="dt" type="datetime-local" value="${toLocalInput(it.sell_at)}" data-k="sell_at">
+      <td class="l"><input class="dt" type="datetime-local" value="${toLocalInput(it.sell_at)}" data-k="sell_at" ${ro}>
           <span class="cd" data-cd="${it.id}"></span></td>
       <td class="l"><span class="badge ${it.status}">${statusText(it.status)}</span>
-          ${it.last_msg?`<div class="msg">${esc(it.last_msg)}</div>`:''}</td>
-      <td class="l"><input class="tl" value="${esc(it.trade_url||'')}" data-k="trade_url" placeholder="收货 交易链接">
+          ${it.last_msg?`<div class="msg">${esc(it.last_msg)}</div>`:''}${sold&&it.sold_at?`<div class="msg">售出时间：${new Date(it.sold_at*1000).toLocaleString()}</div>`:''}</td>
+      <td class="l"><input class="tl" value="${esc(it.trade_url||'')}" data-k="trade_url" placeholder="收货 交易链接" ${ro}>
           <span class="tlhint" data-tl="${it.id}"></span></td>
       <td class="act">
           <button class="iconbtn" data-act="history" title="查看 Steam 售价中位数和销量走势">走势</button>
-          <button class="iconbtn sell" data-act="list" ${listDisabled?`disabled title="${esc(listTitle)}"`:''}>${listLocked?'已挂出':(!inv.ok?'无库存':'上架')}</button>
+          ${sold?`<button class="iconbtn" disabled title="已售出记录只读">只读</button>`:`<button class="iconbtn sell" data-act="list" ${listDisabled?`disabled title="${esc(listTitle)}"`:''}>${listLocked?'待确认':(!inv.ok?'无库存':(hasActiveListings?'补上架':'上架'))}</button>
           <button class="iconbtn send" data-act="send">送出</button>
-          <button class="iconbtn del" data-act="del">删</button></td>`;
+          <button class="iconbtn del" data-act="del">删</button>`}</td>`;
     tb.appendChild(tr);
   }
   summary();
@@ -737,7 +808,7 @@ function render(){
   applyTableFilter();
 }
 
-function statusText(s){return {watching:"盯价中",scheduled:"已定时",due:"到点待挂",pending:"待手机确认",listed:"已挂出",sent:"已发出",error:"出错"}[s]||s;}
+function statusText(s){return {watching:"盯价中",scheduled:"已定时",due:"到点待挂",pending:"待手机确认",listed:"已挂出",sold:"已售出",sent:"已发出",error:"出错"}[s]||s;}
 
 function tickCountdowns(){
   for(const it of state){
@@ -942,6 +1013,7 @@ $("#rows").addEventListener("click",async e=>{
     catch(_){ toast("删除失败","后端没响应","err"); }
   }
   if(btn.dataset.act==="list"){
+    if(isSold(it)){ toast("不能上架","已售出记录只读","warn"); return; }
     const inv=inventoryCheck(it);
     if(!inv.ok){ toast("不能上架",inv.msg,"warn"); return; }
     const suggested=+(it.listing_price||it.listing||it.lowest||0);
@@ -959,6 +1031,7 @@ $("#rows").addEventListener("click",async e=>{
     input.addEventListener("keydown",ev=>{ if(ev.key==="Enter") submitSingleList(id); });
   }
   if(btn.dataset.act==="send"){
+    if(isSold(it)){ toast("不能送出","已售出记录只读","warn"); return; }
     const {partner}=parseTL(it&&it.trade_url);
     if(!partner){ toast("不能送出","先在这一行填一个有效的收货交易链接","warn"); return; }
     if(!confirm(`确认把【${it.name}】发送给 partner=${partner}？\n物品一旦对方接受就不可撤回，发之前务必核对链接是谁的！`)) return;
@@ -1068,10 +1141,11 @@ $("#rows").addEventListener("change",e=>{
   }
 });
 $("#chkAll").addEventListener("change",e=>{
-  if(e.target.checked) state.forEach(it=>selected.add(it.id)); else selected.clear();
+  if(e.target.checked) state.filter(it=>!isSold(it)).forEach(it=>selected.add(it.id)); else selected.clear();
   render();
 });
 function updateBatchUI(){
+  for(const it of state){ if(isSold(it)) selected.delete(it.id); }
   const n=selected.size;
   $("#btnBatch").textContent=`批量上架 (${n})`;
   $("#btnBatch").disabled = n===0;
@@ -1085,23 +1159,27 @@ function updateBatchUI(){
   $("#btnSetPrice").disabled = n===0;
   $("#btnDelist").textContent=`批量下架 (${n}种)`;
   $("#btnDelist").disabled = n===0;
-  const all=state.length>0 && state.every(it=>selected.has(it.id));
+  const selectable=state.filter(it=>!isSold(it));
+  const all=selectable.length>0 && selectable.every(it=>selected.has(it.id));
   const chkAll=$("#chkAll"); chkAll.checked=all; chkAll.indeterminate = n>0 && !all;
 }
 $("#btnBatch").addEventListener("click",()=>{
   const items=state.filter(it=>selected.has(it.id));
   if(!items.length) return;
   if(!AUTH.logged_in){ toast("需要先登录 Steam","点上面「账号密码登录」或「粘贴 Cookie 登录」","warn"); return; }
+  const sold=items.filter(isSold);
   const locked=items.filter(isListLocked);
-  const noInventory=items.filter(it=>!isListLocked(it) && !inventoryCheck(it).ok);
-  const priced=items.filter(it=>+it.net>0 && !isListLocked(it) && inventoryCheck(it).ok);
-  const noPrice=items.filter(it=>(!it.net||+it.net<=0) && !isListLocked(it) && inventoryCheck(it).ok);
+  const noInventory=items.filter(it=>!isSold(it) && !isListLocked(it) && !inventoryCheck(it).ok);
+  const priced=items.filter(it=>!isSold(it) && +it.net>0 && !isListLocked(it) && inventoryCheck(it).ok);
+  const noPrice=items.filter(it=>!isSold(it) && (!it.net||+it.net<=0) && !isListLocked(it) && inventoryCheck(it).ok);
   let total=0, listN=0;
   priced.forEach(it=>{ const q=+it.operation_qty||1; total+=(it.net||0)*q; listN+=q; });
   const rows=items.map(it=>{ const q=+it.operation_qty||1;
     const inv=inventoryCheck(it);
-    const detail=isListLocked(it)
-      ? `<span class="need">已挂出或待确认，跳过</span>`
+    const detail=isSold(it)
+      ? `<span class="need">已售出记录只读，跳过</span>`
+      : isListLocked(it)
+      ? `<span class="need">仍有挂单待确认，跳过</span>`
       : !inv.ok
         ? `<span class="need">${esc(inv.msg)}，跳过</span>`
         : +it.net>0
@@ -1114,15 +1192,16 @@ $("#btnBatch").addEventListener("click",()=>{
     <div class="btotal"><span>合计到手（${listN} 个单）</span><span class="bp">${fmt(total)}</span></div>
     ${noPrice.length?`<p class="muted" style="margin-top:8px;color:var(--warn)">有 ${noPrice.length} 件没有有效上架价，会被跳过。</p>`:""}
     ${noInventory.length?`<p class="muted" style="margin-top:8px;color:var(--warn)">有 ${noInventory.length} 种库存不足或库存为 0，将跳过；请先同步 Steam 库存。</p>`:""}
-    ${locked.length?`<p class="muted" style="margin-top:8px;color:var(--warn)">有 ${locked.length} 种已经挂出或待确认，将跳过。</p>`:""}`;
+    ${locked.length?`<p class="muted" style="margin-top:8px;color:var(--warn)">有 ${locked.length} 种仍有挂单待确认，将跳过。</p>`:""}
+    ${sold.length?`<p class="muted" style="margin-top:8px;color:var(--warn)">有 ${sold.length} 种已售出记录只读，将跳过。</p>`:""}`;
   openModal(`确认批量上架 ${listN} 件`, body, [
     {label:"取消", on:closeModal},
     {label:"确认上架", cls:"go", on:()=>confirmBatch(priced.map(it=>it.id))},
   ]);
 });
 async function confirmBatch(ids){
-  const validIds=ids.filter(id=>{ const it=state.find(x=>x.id===id); return it && !isListLocked(it) && inventoryCheck(it).ok && +it.net>0; });
-  if(!validIds.length){ closeModal(); toast("没有可上架的","选中物品没有库存、库存不足、已挂出，或未填写有效上架价","warn"); return; }
+  const validIds=ids.filter(id=>{ const it=state.find(x=>x.id===id); return it && !isSold(it) && !isListLocked(it) && inventoryCheck(it).ok && +it.net>0; });
+  if(!validIds.length){ closeModal(); toast("没有可上架的","选中物品没有库存、库存不足、仍有挂单待确认，或未填写有效上架价","warn"); return; }
   ids=validIds;
   const ov=$("#ov"); const btn=ov&&ov.querySelector('[data-i="1"]');
   if(btn){ btn.disabled=true; btn.innerHTML='<span class="spin"></span>上架中…'; }
@@ -1152,11 +1231,11 @@ async function runBackgroundJob(action,ids,btn,label){
 $("#btnListConfirm").addEventListener("click",()=>{
   const chosen=state.filter(it=>selected.has(it.id));
   const items=chosen.filter(it=>+it.net>0 && !isListLocked(it) && inventoryCheck(it).ok);
-  if(!items.length){ toast("没有可上架物品","选中物品没有库存、库存不足、已挂出，或未填写有效上架价","warn"); return; }
+  if(!items.length){ toast("没有可上架物品","选中物品没有库存、库存不足、仍有挂单待确认，或未填写有效上架价","warn"); return; }
   const skipped=chosen.length-items.length;
   openModal("上架并批量确认",`<p>将上架所选物品，并使用账号设置中的 maFile 自动确认本次市场出售。</p>
     <p class="muted">只确认本次上架返回的市场挂单编号，不会确认交易报价。令牌文件必须包含 identity_secret 和 device_id。</p>
-    ${skipped?`<p class="muted" style="color:var(--warn)">有 ${skipped} 种物品因无库存、库存不足、已挂出或价格无效而跳过。</p>`:""}`,[
+    ${skipped?`<p class="muted" style="color:var(--warn)">有 ${skipped} 种物品因无库存、库存不足、仍有挂单待确认或价格无效而跳过。</p>`:""}`,[
     {label:"取消",on:closeModal},
     {label:"确认执行",cls:"go",on:()=>runListConfirmFlow(items.map(x=>x.id))},
   ]);
@@ -1452,6 +1531,8 @@ $("#btnPriceRefresh").addEventListener("click",async ()=>{
     await load();
     const parts=[`成功 ${j.refreshed||0}`];
     if(j.limited) parts.push(`限流 ${j.limited}`);
+    if(j.fallback) parts.push(`页面价 ${j.fallback}`);
+    if(j.buff) parts.push(`BUFF ${j.buff}`);
     if(j.errors) parts.push(`失败 ${j.errors}`);
     toast("价格刷新完成",`${parts.join(" · ")} · 共 ${j.total||0} 种；限流时会保留缓存价格`,j.limited||j.errors?"warn":"ok");
   }catch(err){
