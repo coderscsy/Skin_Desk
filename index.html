@@ -215,9 +215,26 @@
   .setgrid{display:flex;flex-wrap:wrap;gap:12px;align-items:end;padding:4px 16px 12px}
   .setgrid .f{display:flex;flex-direction:column;gap:5px}
   .setgrid .f label{font-size:11px;color:var(--muted)}
-  .setgrid input[type=text],.setgrid input[type=password]{background:var(--panel-2);border:1px solid var(--line);
+  .setgrid input[type=text],.setgrid input[type=password],.setgrid select{background:var(--panel-2);border:1px solid var(--line);
         color:var(--text);border-radius:7px;padding:8px 10px;font-family:var(--mono);font-size:12px;outline:none;width:210px}
-  .setgrid input:focus{border-color:var(--accent)}
+  .setgrid input:focus,.setgrid select:focus{border-color:var(--accent);outline:none}
+  .setgrid select{min-width:150px;height:35px;color:var(--text);cursor:pointer}
+.setgrid select option{background:var(--panel-2);color:var(--text)}
+  #invGame{height:36px;min-width:112px;padding:0 34px 0 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);color:var(--text);font:600 13px var(--ui);outline:none;cursor:pointer}
+  #invGame:hover{border-color:var(--muted)}
+  #invGame:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+  #invGame option{background:var(--panel-2);color:var(--text)}
+  #invSearch{box-sizing:border-box;height:36px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);color:var(--text);font:13px var(--ui);outline:none}
+  #invSearch::placeholder{color:var(--muted)}
+  #invSearch:hover{border-color:var(--muted)}
+  #invSearch:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+  .inv-schedule{display:flex;align-items:center;gap:12px;margin:0 0 12px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2)}
+  .inv-schedule label{font-size:12px;font-weight:650;color:var(--text);white-space:nowrap}
+  #invSellAt{box-sizing:border-box;height:36px;min-width:218px;padding:0 11px;border:1px solid var(--line);border-radius:8px;background:var(--input);color:var(--text);font:13px var(--ui);color-scheme:dark;outline:none}
+  #invSellAt:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+  body[data-theme="light"] #invSellAt{color-scheme:light}
+  .inv-schedule .hint{color:var(--muted);font-size:12px;line-height:1.5;white-space:nowrap}
+  @media(max-width:560px){.inv-schedule{align-items:flex-start;flex-direction:column}.inv-schedule .hint{white-space:normal}#invSellAt{width:100%;min-width:0}}
   .setgrid .chk{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text);width:100%;cursor:pointer}
   .setnote{margin:0;padding:0 16px 14px;font-size:11px;color:var(--muted);line-height:1.5}
   .setnote code{color:var(--accent);font-family:var(--mono)}
@@ -379,11 +396,12 @@
 
 .market-search-row{grid-column:1/-1;display:grid;grid-template-columns:150px minmax(300px,1fr) 198px;gap:14px;align-items:end;width:100%}
 .market-search-row .f{min-width:0}.market-search-row select{width:100%}.market-search-row input[name=name]{box-sizing:border-box;width:100%}.market-search-button{align-self:end;height:36px;white-space:nowrap}
-.market-selected{grid-column:1/-1;width:100%;box-sizing:border-box;padding:10px 13px;border:1px solid var(--line);border-radius:8px;color:var(--muted);background:rgba(11,18,27,.45)}
+.market-selected{grid-column:1/-1;width:100%;box-sizing:border-box;padding:10px 13px;border:1px solid var(--line);border-radius:8px;color:var(--muted);background:var(--input)}
 #addSubmit{grid-column:1/-1;justify-self:start;width:auto;min-width:176px;max-width:100%;padding-inline:20px;white-space:nowrap;color:#f4f8fc}
-#addSubmit:disabled{color:#aebdcb;background:#223244;border-color:#31465b;opacity:1;cursor:not-allowed}
-.market-selected.ready{color:var(--good);border-color:rgba(63,211,145,.35);background:rgba(63,211,145,.07)}
+#addSubmit:disabled{color:var(--disabled-text);background:var(--disabled-bg);border-color:var(--disabled-line);opacity:1;cursor:not-allowed}
+.market-selected.ready{color:var(--good);border-color:color-mix(in srgb,var(--good) 35%,var(--line));background:color-mix(in srgb,var(--good) 8%,var(--panel))}
 .market-results{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;max-height:390px;overflow:auto}
+.market-results-status{grid-column:1/-1;position:sticky;bottom:0;padding:9px 12px;text-align:center;border:1px solid var(--line);border-radius:8px;background:color-mix(in srgb,var(--panel) 94%,transparent);color:var(--muted);font-size:12px;backdrop-filter:blur(10px)}
 .market-card{appearance:none;text-align:left;border:1px solid var(--line);border-radius:10px;background:linear-gradient(145deg,rgba(35,49,66,.98),rgba(19,28,39,.98));color:var(--text);padding:12px;cursor:pointer;display:grid;grid-template-columns:72px 1fr;gap:11px;transition:border-color .18s,transform .18s,background .18s}
 .market-card:hover,.market-card.selected{border-color:var(--accent);transform:translateY(-1px);background:linear-gradient(145deg,rgba(47,65,84,.98),rgba(22,33,45,.98))}.market-card img{width:72px;height:72px;object-fit:contain}.market-card .market-app{font-size:12px;color:var(--muted)}.market-card .market-title{font-weight:700;margin:3px 0 8px}.market-card .market-meta{font-size:12px;color:var(--muted)}.market-card .market-price{color:var(--good);font-weight:700}
 @media(max-width:720px){.market-search-row{grid-template-columns:1fr}.market-search-row .market-search-button{width:100%}.market-results{grid-template-columns:1fr}}
@@ -635,6 +653,10 @@ function gameName(appid){ if(!+appid)return "自动识别"; const g=(CFG.games||
 
 let MARKET_RESULTS=[];
 let SELECTED_MARKET=null;
+let MARKET_TOTAL=0;
+let MARKET_LOADING=false;
+let MARKET_DONE=true;
+let MARKET_WARNING="";
 function clearMarketSelection(){
   SELECTED_MARKET=null;
   $("#addSubmit").disabled=true;
@@ -642,35 +664,51 @@ function clearMarketSelection(){
   $("#marketSelected").className="market-selected";
   $("#marketSelected").textContent="尚未选择 Steam 市场商品";
 }
-function renderMarketResults(rows, warning){
-  MARKET_RESULTS=rows||[];
+function renderMarketResults(rows, warning, append=false, totalCount=0, cached=false){
+  if(!append) MARKET_RESULTS=[];
+  const known=new Set(MARKET_RESULTS.map(x=>`${x.appid}\n${x.market_hash_name}`));
+  for(const x of rows||[]){const key=`${x.appid}\n${x.market_hash_name}`;if(!known.has(key)){known.add(key);MARKET_RESULTS.push(x);}}
+  MARKET_TOTAL=Math.max(+totalCount||0,MARKET_TOTAL,MARKET_RESULTS.length);
+  MARKET_WARNING=warning||"";
+  MARKET_DONE=MARKET_RESULTS.length>=MARKET_TOTAL || !(rows||[]).length;
   const box=$("#marketResults");
   if(!MARKET_RESULTS.length){ box.innerHTML=`<div class="dim">${esc(warning||"没有找到商品，请检查英文名称")}</div>`; return; }
-  box.innerHTML=(warning?`<div class="dim" style="grid-column:1/-1">${esc(warning)}</div>`:"")+MARKET_RESULTS.map((x,i)=>`<button class="market-card" type="button" data-market-i="${i}">
+  const selectedKey=SELECTED_MARKET?`${SELECTED_MARKET.appid}\n${SELECTED_MARKET.market_hash_name}`:"";
+  const state=MARKET_LOADING?"正在加载下一页…":MARKET_DONE?`已加载全部 ${MARKET_RESULTS.length} 条`:`已加载 ${MARKET_RESULTS.length} / 共 ${MARKET_TOTAL} 条 · 下拉继续加载`;
+  box.innerHTML=MARKET_RESULTS.map((x,i)=>`<button class="market-card ${selectedKey===`${x.appid}\n${x.market_hash_name}`?'selected':''}" type="button" data-market-i="${i}">
     ${x.image?`<img src="${esc(x.image)}" alt="">`:`<span></span>`}<span><span class="market-app">${esc(x.app_name)} · appid ${esc(x.appid)}</span><span class="market-title">${esc(x.name||x.market_hash_name)}</span><span class="market-meta">在售 ${esc(x.sell_listings??"-")} · <b class="market-price">${esc(x.sell_price_text||"暂无价格")}</b></span></span>
-  </button>`).join("");
+  </button>`).join("")+`<div class="market-results-status">${esc(state)}${cached?' · 缓存':''}${warning?' · '+esc(warning):''}</div>`;
 }
-async function searchSteamMarket(){
+async function loadMarketPage(reset=false){
   const q=$("#addMarketName").value.trim();
   const appid=+$("#addGame").value;
   if(!appid){ toast("请先选择游戏","搜索范围由所选游戏决定","warn"); return; }
   if(q.length<2){ toast("请输入商品名","至少输入 2 个字符","warn"); return; }
-  clearMarketSelection();
-  const btn=$("#marketSearchBtn"); btn.disabled=true; btn.innerHTML='<span class="spin"></span>搜索中…';
-  $("#marketResults").innerHTML='<div class="dim">正在查询所选游戏的 Steam 市场…</div>';
+  if(MARKET_LOADING||(!reset&&MARKET_DONE))return;
+  if(reset){clearMarketSelection();MARKET_RESULTS=[];MARKET_TOTAL=0;MARKET_DONE=false;MARKET_WARNING="";$("#marketResults").innerHTML='<div class="dim">正在查询所选游戏的 Steam 市场…</div>';}
+  MARKET_LOADING=true;
+  const btn=$("#marketSearchBtn"); if(reset){btn.disabled=true;btn.innerHTML='<span class="spin"></span>搜索中…';}
+  if(!reset)renderMarketResults([],MARKET_WARNING,true,MARKET_TOTAL);
   try{
-    const r=await fetch("/api/market/search?appid="+appid+"&q="+encodeURIComponent(q));
+    const start=reset?0:MARKET_RESULTS.length;
+    const r=await fetch("/api/market/search?appid="+appid+"&start="+start+"&count=10&q="+encodeURIComponent(q));
     const j=await r.json();
     if(!r.ok&&!j.results?.length) throw new Error(j.warning||j.error||"搜索失败");
-    renderMarketResults(j.results,j.warning);
-  }catch(e){ renderMarketResults([],e.message||"Steam 搜索失败"); }
-  finally{ btn.disabled=false; btn.textContent="搜索商品"; }
+    MARKET_LOADING=false;
+    renderMarketResults(j.results,j.warning,!reset,j.total_count,j.cached);
+    const box=$("#marketResults");
+    if(!MARKET_DONE&&box.scrollHeight<=box.clientHeight+4)setTimeout(()=>loadMarketPage(false),100);
+  }catch(e){ MARKET_LOADING=false;renderMarketResults([],e.message||"Steam 搜索失败",!reset,MARKET_TOTAL); }
+  finally{ if(reset){btn.disabled=false;btn.textContent="搜索商品";} }
 }
+function searchSteamMarket(){return loadMarketPage(true);}
 $("#marketSearchBtn").addEventListener("click",searchSteamMarket);
 $("#addMarketName").addEventListener("input",()=>{
   if(SELECTED_MARKET&&$("#addMarketName").value!==SELECTED_MARKET.market_hash_name) clearMarketSelection();
+  MARKET_RESULTS=[];MARKET_TOTAL=0;MARKET_DONE=true;MARKET_WARNING="";$("#marketResults").innerHTML="";
 });
-$("#addGame").addEventListener("change",()=>{clearMarketSelection();$("#marketResults").innerHTML="";});
+$("#addGame").addEventListener("change",()=>{clearMarketSelection();MARKET_RESULTS=[];MARKET_TOTAL=0;MARKET_DONE=true;$("#marketResults").innerHTML="";});
+$("#marketResults").addEventListener("scroll",e=>{const box=e.currentTarget;if(!MARKET_LOADING&&!MARKET_DONE&&box.scrollTop+box.clientHeight>=box.scrollHeight-80)loadMarketPage(false);});
 $("#addMarketName").addEventListener("keydown",e=>{ if(e.key==="Enter"&&!SELECTED_MARKET){e.preventDefault();searchSteamMarket();} });
 $("#marketResults").addEventListener("click",e=>{
   const card=e.target.closest("[data-market-i]"); if(!card)return;
@@ -1560,6 +1598,7 @@ function openInventoryPicker(opts={}){
         <input type="checkbox" id="invOnlyM" checked> 只看可上架</label>
       <span id="invMsg" class="muted" style="font-size:12px;"></span>
     </div>
+    <div class="inv-schedule"><label for="invSellAt">统一定时上架时间</label><input id="invSellAt" type="datetime-local"><span class="hint">留空则只加入监控，<br>不定时上架</span></div>
     <div id="invList" style="max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:8px;"><div style="padding:20px;color:var(--muted);text-align:center">选择游戏后点击“加载库存”</div></div>
     <p class="muted" id="invSel" style="font-size:12px;margin:8px 0 0"></p>`;
   const ov=openModal("从 Steam 库存选择",body,[
@@ -1643,6 +1682,7 @@ function invSelCount(){
 async function invAddSelected(){
   const ov=$("#ov"); if(!ov) return;
   const appid=+ov.querySelector("#invGame").value;
+  const sellAt=(ov.querySelector("#invSellAt")?.value||"").trim();
   const checks=[...ov.querySelectorAll(".invchk:checked")];
   if(!checks.length){ toast("没选物品","勾选要加入的物品再点","warn"); return; }
   const btn=ov.querySelector('.actions [data-i="1"]');
@@ -1651,7 +1691,7 @@ async function invAddSelected(){
   for(const c of checks){
     const it=INV_ITEMS[+c.dataset.idx]; if(!it) continue;
     try{ const r=await fetch("/api/items",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({name:it.market_hash_name, name_zh:it.name_zh||it.name||"", appid, qty:it.count})}); if(r.ok) n++; }catch(e){}
+      body:JSON.stringify({name:it.market_hash_name, name_zh:it.name_zh||it.name||"", appid, qty:it.count, sell_at:sellAt||null})}); if(r.ok) n++; }catch(e){}
   }
   closeModal(); toast("已加入监控表",`${n} 种 · 直接填写上架价即可`,"ok"); load();
 }

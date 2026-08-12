@@ -324,26 +324,28 @@ def _market_name_key(value):
     return " ".join(html.unescape(str(value or "")).split()).casefold()
 
 
-def search_steam_market_candidates(query, selected_appid):
+def search_steam_market_candidates(query, selected_appid, start=0, count=10):
     """在用户选定的游戏市场中按名称搜索，并返回标准商品链接。"""
     global MARKET_SEARCH_COOLDOWN_UNTIL
     query = str(query or "").strip()
     selected_appid = int(selected_appid)
-    cache_key = (selected_appid, _market_name_key(query))
+    start = max(0, int(start))
+    count = max(1, min(10, int(count)))
+    cache_key = (selected_appid, _market_name_key(query), start, count)
     cached = MARKET_SEARCH_CACHE.get(cache_key)
-    if cached and time.time() - cached["ts"] <= 3600:
-        return cached["results"], None, True
+    if cached and time.time() - cached["ts"] <= 60:
+        return cached["results"], cached["total_count"], None, True
     if MARKET_SEARCH_COOLDOWN_UNTIL > time.time():
         retry_after = int(MARKET_SEARCH_COOLDOWN_UNTIL - time.time())
         if cached:
-            return cached["results"], f"Steam 限流，当前显示缓存结果，约 {retry_after} 秒后可重试", True
-        return [], f"Steam 市场搜索限流冷却中，约 {retry_after} 秒后可重试", False
+            return cached["results"], cached["total_count"], f"Steam 限流，当前显示缓存结果，约 {retry_after} 秒后可重试", True
+        return [], 0, f"Steam 市场搜索限流冷却中，约 {retry_after} 秒后可重试", False
 
     params = {
         "q": query,
         "query": query,
-        "start": 0,
-        "count": 30,
+        "start": start,
+        "count": count,
         "search_descriptions": 0,
         "sort_column": "popular",
         "sort_dir": "desc",
@@ -373,15 +375,15 @@ def search_steam_market_candidates(query, selected_appid):
         if response.status_code == 429:
             MARKET_SEARCH_COOLDOWN_UNTIL = time.time() + 1800
             if cached:
-                return cached["results"], "Steam 限流，当前显示缓存结果，30 分钟后可重试", True
-            return [], "Steam 市场搜索触发限流，30 分钟后可重试", False
+                return cached["results"], cached["total_count"], "Steam 限流，当前显示缓存结果，30 分钟后可重试", True
+            return [], 0, "Steam 市场搜索触发限流，30 分钟后可重试", False
         if response.status_code != 200:
-            return [], f"Steam 市场搜索返回 HTTP {response.status_code}", False
+            return [], 0, f"Steam 市场搜索返回 HTTP {response.status_code}", False
         payload = response.json()
     except Exception as e:
         if cached:
-            return cached["results"], "Steam 搜索失败，当前显示缓存结果", True
-        return [], "Steam 市场搜索失败：" + friendly_steam_error(e), False
+            return cached["results"], cached["total_count"], "Steam 搜索失败，当前显示缓存结果", True
+        return [], 0, "Steam 市场搜索失败：" + friendly_steam_error(e), False
 
     results = []
     seen = set()
@@ -411,8 +413,11 @@ def search_steam_market_candidates(query, selected_appid):
             "sell_price": sell_price,
             "sell_price_text": row.get("sell_price_text") or (f"¥{sell_price:.2f}" if sell_price is not None else ""),
         })
-    MARKET_SEARCH_CACHE[cache_key] = {"results": results, "ts": time.time()}
-    return results, None, False
+    total_count = int(payload.get("total_count") or len(results))
+    MARKET_SEARCH_CACHE[cache_key] = {
+        "results": results, "total_count": total_count, "ts": time.time()
+    }
+    return results, total_count, None, False
 
 
 def fetch_global_market_identity(name):
@@ -2217,16 +2222,25 @@ def session_keepalive():
 def api_market_search():
     query = str(request.args.get("q") or "").strip()
     appid = _positive_appid(request.args.get("appid"))
+    try:
+        start = max(0, int(request.args.get("start", 0)))
+        count = max(1, min(10, int(request.args.get("count", 10))))
+    except (TypeError, ValueError):
+        return jsonify({"error": "分页参数无效"}), 400
     if len(query) < 2:
         return jsonify({"error": "请输入至少 2 个字符的商品名称"}), 400
     if not appid:
         return jsonify({"error": "请先选择要搜索的游戏"}), 400
-    results, warning, cached = search_steam_market_candidates(query, appid)
+    results, total_count, warning, cached = search_steam_market_candidates(
+        query, appid, start=start, count=count
+    )
     status = 429 if not results and warning and "限流" in warning else 200
     return jsonify({
         "query": query,
         "appid": appid,
+        "start": start,
         "count": len(results),
+        "total_count": total_count,
         "results": results,
         "warning": warning,
         "cached": cached,
