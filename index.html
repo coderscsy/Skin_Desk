@@ -70,7 +70,7 @@
   form.add input:focus{border-color:var(--accent)}
   form.add input[name=name]{width:220px;font-family:var(--ui)}
   form.add input[type=number]{width:88px}
-  form.add input[type=datetime-local]{width:200px;font-family:var(--ui)}
+  form.add input[type=datetime-local]{width:218px;min-width:218px;font-family:var(--ui);color-scheme:dark}
   form.add select{background:var(--input);border:1px solid var(--line);color:var(--text);
                   border-radius:7px;padding:8px 10px;font-family:var(--ui);font-size:13px;outline:none;width:96px}
   form.add select:focus{border-color:var(--accent)}
@@ -377,6 +377,16 @@
     100%{box-shadow:none}
   }
 
+.market-search-row{grid-column:1/-1;display:grid;grid-template-columns:150px minmax(300px,1fr) 198px;gap:14px;align-items:end;width:100%}
+.market-search-row .f{min-width:0}.market-search-row select{width:100%}.market-search-row input[name=name]{box-sizing:border-box;width:100%}.market-search-button{align-self:end;height:36px;white-space:nowrap}
+.market-selected{grid-column:1/-1;width:100%;box-sizing:border-box;padding:10px 13px;border:1px solid var(--line);border-radius:8px;color:var(--muted);background:rgba(11,18,27,.45)}
+#addSubmit{grid-column:1/-1;justify-self:start;width:auto;min-width:176px;max-width:100%;padding-inline:20px;white-space:nowrap;color:#f4f8fc}
+#addSubmit:disabled{color:#aebdcb;background:#223244;border-color:#31465b;opacity:1;cursor:not-allowed}
+.market-selected.ready{color:var(--good);border-color:rgba(63,211,145,.35);background:rgba(63,211,145,.07)}
+.market-results{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;max-height:390px;overflow:auto}
+.market-card{appearance:none;text-align:left;border:1px solid var(--line);border-radius:10px;background:linear-gradient(145deg,rgba(35,49,66,.98),rgba(19,28,39,.98));color:var(--text);padding:12px;cursor:pointer;display:grid;grid-template-columns:72px 1fr;gap:11px;transition:border-color .18s,transform .18s,background .18s}
+.market-card:hover,.market-card.selected{border-color:var(--accent);transform:translateY(-1px);background:linear-gradient(145deg,rgba(47,65,84,.98),rgba(22,33,45,.98))}.market-card img{width:72px;height:72px;object-fit:contain}.market-card .market-app{font-size:12px;color:var(--muted)}.market-card .market-title{font-weight:700;margin:3px 0 8px}.market-card .market-meta{font-size:12px;color:var(--muted)}.market-card .market-price{color:var(--good);font-weight:700}
+@media(max-width:720px){.market-search-row{grid-template-columns:1fr}.market-search-row .market-search-button{width:100%}.market-results{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -445,16 +455,21 @@
     <div class="section-title">
       <span>添加物品</span><span class="hint">填写英文市场名即可开始监控</span>
     </div>
-    <div class="f"><label>游戏</label><select name="appid" id="addGame"></select></div>
-    <div class="f"><label>物品英文名 (market hash name)</label>
-      <input name="name" placeholder="Snakebite Case" required></div>
+    <div class="market-search-row">
+      <div class="f"><label>第一步：选择游戏</label><select name="appid" id="addGame"></select></div>
+      <div class="f market-query-field"><label>第二步：输入商品名称</label>
+        <input name="name" id="addMarketName" placeholder="Balloon Pack" required></div>
+      <button class="btn ghost market-search-button" id="marketSearchBtn" type="button">搜索商品</button>
+    </div>
     <div class="f"><label>数量</label><input name="qty" type="number" step="1" min="1" placeholder="1"></div>
     <div class="f"><label>购入成本 ¥（游戏掉落填 0）</label><input name="purchase" type="number" step="0.01" min="0" placeholder="0"></div>
     <div class="f"><label>余额折扣 %（例如 75 = 7.5折）</label><input name="markup" type="number" step="0.01" value="75"></div>
     <div class="f"><label>上架价 ¥（买家看到，可选）</label><input name="listing_price" type="text" inputmode="decimal" placeholder="留空按余额折扣计算"></div>
     <div class="f"><label>手续费 %</label><input name="fee" type="number" step="0.1" value="15"></div>
     <div class="f"><label>出售时间 (留空=只盯价)</label><input name="sell_at" type="datetime-local"></div>
-    <button class="btn" type="submit">添加</button>
+    <div class="market-selected" id="marketSelected">尚未选择 Steam 市场商品</div>
+    <div class="market-results" id="marketResults"></div>
+    <button class="btn" id="addSubmit" type="submit" disabled>选择商品后添加</button>
   </form>
 
   <div class="batchbar">
@@ -602,7 +617,8 @@ function priceRefs(it){
 }
 function priceDisplay(it, priceNote){
   const steamMain = it.lowest!=null ? `<span class="price">${fmt(it.lowest)}</span>${priceNote}` : "";
-  const steamState = it.lowest==null ? `<span class="dim">${it.market_lookup_error||it.price_error==='rate_limited'?'Steam 限流冷却中':it.price_error?'Steam 无人民币价':'自动识别游戏中…'}</span>` : "";
+  const steamError = it.market_lookup_error || (it.price_error==='rate_limited'?'Steam 限流冷却中':it.price_error?'Steam 无人民币价':'自动识别游戏中…');
+  const steamState = it.lowest==null ? `<span class="dim">${esc(steamError)}</span>` : "";
   const refs = priceRefs(it);
   if(it.buff_price!=null){
     return `<span class="price">${fmt(it.buff_price)}</span><span class="sub stale">BUFF 参考价${it.buff_sell_num!=null?' · 在售 '+esc(it.buff_sell_num):''}</span>${steamMain?`<span class="sub">Steam CNY ${fmt(it.lowest)}</span>`:steamState}${refs}`;
@@ -611,9 +627,64 @@ function priceDisplay(it, priceNote){
 }
 function gameOptionsHTML(sel, allowAuto=false){
   const auto=allowAuto?`<option value="0" ${(+sel===0)?'selected':''}>自动识别（全市场）</option>`:"";
-  return auto+(CFG.games||[]).map(g=>`<option value="${g.appid}" ${(+sel===+g.appid)?'selected':''}>${esc(g.name)}</option>`).join("");
+  const games=CFG.games||[];
+  const dynamic=(+sel&&!games.some(g=>+g.appid===+sel))?`<option value="${+sel}" selected>appid ${+sel}</option>`:"";
+  return auto+dynamic+games.map(g=>`<option value="${g.appid}" ${(+sel===+g.appid)?'selected':''}>${esc(g.name)}</option>`).join("");
 }
 function gameName(appid){ if(!+appid)return "自动识别"; const g=(CFG.games||[]).find(x=>+x.appid===+appid); return g?g.name:('appid '+appid); }
+
+let MARKET_RESULTS=[];
+let SELECTED_MARKET=null;
+function clearMarketSelection(){
+  SELECTED_MARKET=null;
+  $("#addSubmit").disabled=true;
+  $("#addSubmit").textContent="选择商品后添加";
+  $("#marketSelected").className="market-selected";
+  $("#marketSelected").textContent="尚未选择 Steam 市场商品";
+}
+function renderMarketResults(rows, warning){
+  MARKET_RESULTS=rows||[];
+  const box=$("#marketResults");
+  if(!MARKET_RESULTS.length){ box.innerHTML=`<div class="dim">${esc(warning||"没有找到商品，请检查英文名称")}</div>`; return; }
+  box.innerHTML=(warning?`<div class="dim" style="grid-column:1/-1">${esc(warning)}</div>`:"")+MARKET_RESULTS.map((x,i)=>`<button class="market-card" type="button" data-market-i="${i}">
+    ${x.image?`<img src="${esc(x.image)}" alt="">`:`<span></span>`}<span><span class="market-app">${esc(x.app_name)} · appid ${esc(x.appid)}</span><span class="market-title">${esc(x.name||x.market_hash_name)}</span><span class="market-meta">在售 ${esc(x.sell_listings??"-")} · <b class="market-price">${esc(x.sell_price_text||"暂无价格")}</b></span></span>
+  </button>`).join("");
+}
+async function searchSteamMarket(){
+  const q=$("#addMarketName").value.trim();
+  const appid=+$("#addGame").value;
+  if(!appid){ toast("请先选择游戏","搜索范围由所选游戏决定","warn"); return; }
+  if(q.length<2){ toast("请输入商品名","至少输入 2 个字符","warn"); return; }
+  clearMarketSelection();
+  const btn=$("#marketSearchBtn"); btn.disabled=true; btn.innerHTML='<span class="spin"></span>搜索中…';
+  $("#marketResults").innerHTML='<div class="dim">正在查询所选游戏的 Steam 市场…</div>';
+  try{
+    const r=await fetch("/api/market/search?appid="+appid+"&q="+encodeURIComponent(q));
+    const j=await r.json();
+    if(!r.ok&&!j.results?.length) throw new Error(j.warning||j.error||"搜索失败");
+    renderMarketResults(j.results,j.warning);
+  }catch(e){ renderMarketResults([],e.message||"Steam 搜索失败"); }
+  finally{ btn.disabled=false; btn.textContent="搜索商品"; }
+}
+$("#marketSearchBtn").addEventListener("click",searchSteamMarket);
+$("#addMarketName").addEventListener("input",()=>{
+  if(SELECTED_MARKET&&$("#addMarketName").value!==SELECTED_MARKET.market_hash_name) clearMarketSelection();
+});
+$("#addGame").addEventListener("change",()=>{clearMarketSelection();$("#marketResults").innerHTML="";});
+$("#addMarketName").addEventListener("keydown",e=>{ if(e.key==="Enter"&&!SELECTED_MARKET){e.preventDefault();searchSteamMarket();} });
+$("#marketResults").addEventListener("click",e=>{
+  const card=e.target.closest("[data-market-i]"); if(!card)return;
+  const x=MARKET_RESULTS[+card.dataset.marketI]; if(!x)return;
+  if(+x.appid!==+$("#addGame").value){toast("商品游戏不一致","请重新搜索后选择","warn");return;}
+  SELECTED_MARKET=x;
+  $("#addMarketName").value=x.market_hash_name;
+  $("#marketSelected").className="market-selected ready";
+  $("#marketSelected").textContent=`已选择：${x.app_name} · appid ${x.appid} · ${x.market_hash_name}`;
+  $("#addSubmit").disabled=false; $("#addSubmit").textContent="添加选中商品";
+  document.querySelectorAll(".market-card").forEach(el=>el.classList.toggle("selected",el===card));
+});
+$("#addForm").addEventListener("submit",e=>{ if(!SELECTED_MARKET){e.preventDefault();toast("请先搜索并选择商品","先选择游戏，再搜索并点选商品","warn");} });
+$("#addForm").addEventListener("reset",()=>setTimeout(()=>{clearMarketSelection();$("#marketResults").innerHTML="";},0));
 
 /* ---------------- toast ---------------- */
 function toast(title, body, kind){
@@ -644,7 +715,7 @@ document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeModal(); });
 /* ---------------- config / banner ---------------- */
 async function loadConfig(){
   try{ CFG = Object.assign(CFG, await (await fetch("/api/config")).json()); }catch(e){}
-  const ag=$("#addGame"); if(ag) ag.innerHTML=gameOptionsHTML(ag.value===""?0:+ag.value,true);   // 支持全市场自动识别
+  const ag=$("#addGame"); if(ag) ag.innerHTML=gameOptionsHTML(+ag.value||730);
   const sig=$("#set_inv_game"); if(sig) sig.innerHTML=gameOptionsHTML(APP_SETTINGS.inventory_appid||730);
   const b = $("#banner");
   const trade = CFG.enable_trade
@@ -845,7 +916,7 @@ function render(){
     if(sold) tr.classList.add("readonly");
     tr.innerHTML = `
       <td class="c"><input type="checkbox" class="rowchk" data-id="${it.id}" ${selected.has(it.id)?'checked':''} ${sold?'disabled title="已售出记录只读"':''}></td>
-      <td><select class="gsel" data-k="appid" ${ro}>${gameOptionsHTML(it.appid??0,true)}</select></td>
+      <td><select class="gsel" data-k="appid" ${ro}>${gameOptionsHTML(it.appid??0,!+it.appid)}</select></td>
       <td class="l">${itemDisplayName(it)!==it.name?`<div class="item-name-zh">${esc(itemDisplayName(it))}</div>`:""}<input class="name ${itemDisplayName(it)!==it.name?'item-name-en':''}" value="${esc(it.name)}" data-k="name" ${ro}>${vol}</td>
       <td><input class="num" type="number" step="1" min="1" value="${it.operation_qty||1}" data-k="operation_qty" style="width:46px" ${ro}>
         <span class="sub">总 ${(+it.steam_inventory_count||0)+(+it.steam_listing_count||0)+(+it.steam_pending_count||0)}</span>

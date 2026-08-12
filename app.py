@@ -20,7 +20,7 @@ import html
 import threading
 import traceback
 from datetime import datetime, timezone
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 import requests
 import warnings
@@ -122,6 +122,7 @@ JOBS = {}                 # 后台批量任务
 PRICE_CACHE = {}          # name -> {lowest, median, volume, error, ts}
 PRICE_OVERVIEW_COOLDOWN_UNTIL = 0
 MARKET_SEARCH_COOLDOWN_UNTIL = 0
+MARKET_SEARCH_CACHE = {}
 HISTORY_CACHE = {}        # (appid, name) -> {points, ts, error, cooldown_until}
 _steam_client = None      # 复用的 steampy 客户端（仅旧的“送出/发货”用）
 
@@ -323,15 +324,146 @@ def _market_name_key(value):
     return " ".join(html.unescape(str(value or "")).split()).casefold()
 
 
+def search_steam_market_candidates(query, selected_appid):
+    """在用户选定的游戏市场中按名称搜索，并返回标准商品链接。"""
+    global MARKET_SEARCH_COOLDOWN_UNTIL
+    query = str(query or "").strip()
+    selected_appid = int(selected_appid)
+    cache_key = (selected_appid, _market_name_key(query))
+    cached = MARKET_SEARCH_CACHE.get(cache_key)
+    if cached and time.time() - cached["ts"] <= 3600:
+        return cached["results"], None, True
+    if MARKET_SEARCH_COOLDOWN_UNTIL > time.time():
+        retry_after = int(MARKET_SEARCH_COOLDOWN_UNTIL - time.time())
+        if cached:
+            return cached["results"], f"Steam 限流，当前显示缓存结果，约 {retry_after} 秒后可重试", True
+        return [], f"Steam 市场搜索限流冷却中，约 {retry_after} 秒后可重试", False
+
+    params = {
+        "q": query,
+        "query": query,
+        "start": 0,
+        "count": 30,
+        "search_descriptions": 0,
+        "sort_column": "popular",
+        "sort_dir": "desc",
+        "norender": 1,
+        "country": "CN",
+        "currency": 23,
+        "l": "schinese",
+        "appid": selected_appid,
+    }
+    market_session = STEAM.session if len(STEAM.session.cookies) else SESSION
+    try:
+        if market_session is STEAM.session:
+            with STEAM_LOCK:
+                response = market_session.get(
+                    "https://steamcommunity.com/market/search/render/",
+                    params=params,
+                    headers={"Referer": "https://steamcommunity.com/market/search"},
+                    timeout=20,
+                )
+        else:
+            response = market_session.get(
+                "https://steamcommunity.com/market/search/render/",
+                params=params,
+                headers={"Referer": "https://steamcommunity.com/market/search"},
+                timeout=20,
+            )
+        if response.status_code == 429:
+            MARKET_SEARCH_COOLDOWN_UNTIL = time.time() + 1800
+            if cached:
+                return cached["results"], "Steam 限流，当前显示缓存结果，30 分钟后可重试", True
+            return [], "Steam 市场搜索触发限流，30 分钟后可重试", False
+        if response.status_code != 200:
+            return [], f"Steam 市场搜索返回 HTTP {response.status_code}", False
+        payload = response.json()
+    except Exception as e:
+        if cached:
+            return cached["results"], "Steam 搜索失败，当前显示缓存结果", True
+        return [], "Steam 市场搜索失败：" + friendly_steam_error(e), False
+
+    results = []
+    seen = set()
+    for row in payload.get("results") or []:
+        description = row.get("asset_description") or {}
+        appid = _positive_appid(description.get("appid") or row.get("appid"))
+        market_hash_name = str(
+            row.get("hash_name") or description.get("market_hash_name") or ""
+        ).strip()
+        if appid != selected_appid or not market_hash_name or (appid, market_hash_name) in seen:
+            continue
+        seen.add((appid, market_hash_name))
+        icon = str(description.get("icon_url_large") or description.get("icon_url") or "").strip()
+        sell_price = row.get("sell_price")
+        try:
+            sell_price = round(float(sell_price) / 100, 2) if sell_price is not None else None
+        except (TypeError, ValueError):
+            sell_price = None
+        results.append({
+            "appid": appid,
+            "app_name": str(row.get("app_name") or description.get("app_name") or appid),
+            "name": str(row.get("name") or description.get("market_name") or market_hash_name),
+            "market_hash_name": market_hash_name,
+            "listing_url": f"https://steamcommunity.com/market/listings/{appid}/{quote(market_hash_name, safe='')}",
+            "image": ("https://community.fastly.steamstatic.com/economy/image/" + icon) if icon else "",
+            "sell_listings": row.get("sell_listings"),
+            "sell_price": sell_price,
+            "sell_price_text": row.get("sell_price_text") or (f"¥{sell_price:.2f}" if sell_price is not None else ""),
+        })
+    MARKET_SEARCH_CACHE[cache_key] = {"results": results, "ts": time.time()}
+    return results, None, False
+
+
 def fetch_global_market_identity(name):
     """从 Steam 全市场搜索中精确解析 appid 和标准 market_hash_name。"""
     global MARKET_SEARCH_COOLDOWN_UNTIL
     if MARKET_SEARCH_COOLDOWN_UNTIL > time.time():
         return None, "Steam 市场搜索限流冷却中"
+    wanted = _market_name_key(name)
+    matches = {}
+    market_session = STEAM.session if len(STEAM.session.cookies) else SESSION
+    limited = False
+    last_error = None
+
+    # 优先读取用户提供的市场搜索页面。登录会话通常比匿名 render 接口更稳定，
+    # 页面结果链接本身就包含 /listings/{appid}/{market_hash_name}。
     try:
-        response = SESSION.get(
-            "https://steamcommunity.com/market/search/render/",
-            params={
+        if market_session is STEAM.session:
+            with STEAM_LOCK:
+                response = market_session.get(
+                    "https://steamcommunity.com/market/search",
+                    params={"q": name}, timeout=15,
+                )
+        else:
+            response = market_session.get(
+                "https://steamcommunity.com/market/search",
+                params={"q": name}, timeout=15,
+            )
+        if response.status_code == 200:
+            for appid_text, encoded_name in re.findall(
+                    r'(?:https?:)?//steamcommunity\.com/market/listings/(\d+)/([^"\'?#<>]+)',
+                    response.text, flags=re.I):
+                market_hash_name = unquote(html.unescape(encoded_name)).strip().rstrip("/")
+                appid = _positive_appid(appid_text)
+                if appid and _market_name_key(market_hash_name) == wanted:
+                    matches[(appid, market_hash_name)] = {
+                        "appid": appid,
+                        "market_hash_name": market_hash_name,
+                        "app_name": GAMES.get(appid, {}).get("name", str(appid)),
+                    }
+        elif response.status_code == 429:
+            limited = True
+        else:
+            last_error = f"Steam 市场搜索页面返回 HTTP {response.status_code}"
+    except Exception as e:
+        last_error = "Steam 市场搜索页面失败：" + friendly_steam_error(e)
+
+    # 页面没有内嵌结果时，再使用 JSON 搜索；同时发送 Steam 当前兼容的 q/query 参数。
+    if not matches:
+        try:
+            params = {
+                "q": name,
                 "query": name,
                 "start": 0,
                 "count": 20,
@@ -339,40 +471,54 @@ def fetch_global_market_identity(name):
                 "sort_column": "popular",
                 "sort_dir": "desc",
                 "norender": 1,
-            },
-            headers={"Referer": "https://steamcommunity.com/market/search"},
-            timeout=15,
-        )
-        if response.status_code == 429:
-            MARKET_SEARCH_COOLDOWN_UNTIL = time.time() + 1800
-            return None, "Steam 市场搜索触发限流，30 分钟后重试"
-        if response.status_code != 200:
-            return None, f"Steam 市场搜索返回 HTTP {response.status_code}"
-        payload = response.json()
-    except Exception as e:
-        return None, "Steam 市场搜索失败：" + friendly_steam_error(e)
+            }
+            if market_session is STEAM.session:
+                with STEAM_LOCK:
+                    response = market_session.get(
+                        "https://steamcommunity.com/market/search/render/",
+                        params=params,
+                        headers={"Referer": "https://steamcommunity.com/market/search"},
+                        timeout=15,
+                    )
+            else:
+                response = market_session.get(
+                    "https://steamcommunity.com/market/search/render/",
+                    params=params,
+                    headers={"Referer": "https://steamcommunity.com/market/search"},
+                    timeout=15,
+                )
+            if response.status_code == 200:
+                payload = response.json()
+                for row in payload.get("results") or []:
+                    description = row.get("asset_description") or {}
+                    market_hash_name = str(
+                        row.get("hash_name") or description.get("market_hash_name") or ""
+                    ).strip()
+                    appid = _positive_appid(description.get("appid") or row.get("appid"))
+                    if not appid or _market_name_key(market_hash_name) != wanted:
+                        continue
+                    matches[(appid, market_hash_name)] = {
+                        "appid": appid,
+                        "market_hash_name": market_hash_name,
+                        "app_name": str(row.get("app_name") or description.get("app_name") or appid),
+                    }
+            elif response.status_code == 429:
+                limited = True
+            else:
+                last_error = f"Steam 市场搜索接口返回 HTTP {response.status_code}"
+        except Exception as e:
+            last_error = "Steam 市场搜索接口失败：" + friendly_steam_error(e)
 
-    wanted = _market_name_key(name)
-    matches = {}
-    for row in payload.get("results") or []:
-        description = row.get("asset_description") or {}
-        market_hash_name = str(
-            row.get("hash_name") or description.get("market_hash_name") or ""
-        ).strip()
-        appid = _positive_appid(description.get("appid") or row.get("appid"))
-        if not appid or not market_hash_name or _market_name_key(market_hash_name) != wanted:
-            continue
-        key = (appid, market_hash_name)
-        matches[key] = {
-            "appid": appid,
-            "market_hash_name": market_hash_name,
-            "app_name": str(row.get("app_name") or description.get("app_name") or appid),
-        }
     if len(matches) == 1:
         return next(iter(matches.values())), None
     if len(matches) > 1:
         games = "、".join(sorted({x["app_name"] for x in matches.values()}))
         return None, f"找到多个同名商品（{games}），请手动选择游戏"
+    if limited:
+        MARKET_SEARCH_COOLDOWN_UNTIL = time.time() + 1800
+        return None, "Steam 市场搜索触发限流，30 分钟后重试"
+    if last_error:
+        return None, last_error
     return None, "Steam 全市场未找到完全匹配的英文商品名"
 
 
@@ -842,7 +988,6 @@ def price_refresher():
     """后台线程：轮流刷新过期价格，单条之间留间隔以防限流。"""
     while True:
         try:
-            resolve_missing_market_items()
             with LOCK:
                 keys = sorted({(item_appid(it), it["name"]) for it in ITEMS})
             for appid, name in keys:
@@ -858,7 +1003,6 @@ def price_refresher():
 
 def refresh_prices_once(force=False):
     """手动刷新当前监控表价格；失败时保留旧成功价格。"""
-    resolve_missing_market_items(force=force)
     refreshed = 0
     limited = 0
     errors = 0
@@ -1388,6 +1532,8 @@ def api_add_item():
         appid = _positive_appid(body.get("appid"))
     except Exception:
         appid = None
+    if not appid:
+        return jsonify({"error": "请先搜索并选择 Steam 市场商品，不能使用固定或猜测的游戏 ID"}), 400
     it = {
         "id": str(int(time.time() * 1000)),
         "name": name,
@@ -2065,6 +2211,26 @@ def session_keepalive():
         except Exception as e:
             print("[保活] 自动恢复失败，下次继续重试：", e)
         time.sleep(3600)
+
+
+@app.route("/api/market/search", methods=["GET"])
+def api_market_search():
+    query = str(request.args.get("q") or "").strip()
+    appid = _positive_appid(request.args.get("appid"))
+    if len(query) < 2:
+        return jsonify({"error": "请输入至少 2 个字符的商品名称"}), 400
+    if not appid:
+        return jsonify({"error": "请先选择要搜索的游戏"}), 400
+    results, warning, cached = search_steam_market_candidates(query, appid)
+    status = 429 if not results and warning and "限流" in warning else 200
+    return jsonify({
+        "query": query,
+        "appid": appid,
+        "count": len(results),
+        "results": results,
+        "warning": warning,
+        "cached": cached,
+    }), status
 
 
 def main():
