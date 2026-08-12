@@ -427,7 +427,8 @@ def parse_market_search_page_price(page, name):
         except (TypeError, ValueError):
             return None
         if cents > 0 and currency > 0:
-            return {"cents": cents, "currency": currency, "volume": volume}
+            return {"cents": cents, "currency": currency, "volume": volume,
+                    "name_zh": (row.get("name") or "").strip()}
     return None
 
 
@@ -450,6 +451,7 @@ def fetch_market_search_page_price(name, appid):
             "price_currency_name": PRICE_CURRENCY_NAMES.get(currency, str(currency)),
             "volume": str(price["volume"]),
             "source": "market_search_page",
+            "name_zh": price.get("name_zh") or "",
         }
         if currency == int(CONFIG["currency"]):
             result.update({"lowest": price["cents"] / 100, "error": None})
@@ -467,6 +469,34 @@ def fetch_market_search_page_price(name, appid):
         return {"error": "need_auth"}
     except Exception as e:
         return {"error": str(e)}
+
+
+def parse_market_suggestion(payload, appid):
+    """提取 Steam 搜索建议返回的官方中文名和新版商品组 ID。"""
+    if not isinstance(payload, dict):
+        return None
+    for row in payload.get("results") or []:
+        if int(row.get("app_id") or 0) != int(appid):
+            continue
+        name_zh = (row.get("market_name") or "").strip()
+        group_id = (row.get("market_hash_name") or "").strip()
+        if name_zh and re.fullmatch(r"G[0-9A-F]+", group_id, re.I):
+            return {"name_zh": name_zh, "market_group_id": group_id}
+    return None
+
+
+def fetch_market_suggestion(name, appid):
+    try:
+        with STEAM_LOCK:
+            response = STEAM.authenticated_get(
+                "https://steamcommunity.com/market/searchsuggestionsresults",
+                params={"q": name, "appid": int(appid), "l": "schinese"},
+                headers={"Referer": "https://steamcommunity.com/market/"}, timeout=20)
+        if response.status_code != 200:
+            return None
+        return parse_market_suggestion(response.json(), appid)
+    except Exception:
+        return None
 
 
 def resolve_market_group_id(name, appid):
@@ -575,16 +605,13 @@ def fetch_new_market_price(name, appid):
         search_result = fetch_market_search_page_price(name, appid)
         if search_result.get("lowest") is not None and not search_result.get("error"):
             return search_result
-        group_id = resolve_market_group_id(name, appid)
-        if not group_id:
-            return {"error": "market_group_not_found"}
-        bucket_id = group_id[1:]
+        suggestion = fetch_market_suggestion(name, appid) or {}
         url = "https://steamcommunity.com/market/orderbook"
         with STEAM_LOCK:
             response = STEAM.authenticated_get(
-                url, params={"q": "Load", "qp": json.dumps([int(appid), bucket_id], separators=(",", ":"))},
+                url, params={"q": "Load", "qp": json.dumps([int(appid), name], separators=(",", ":"))},
                 headers={"x-valve-request-type": "queryAction",
-                         "Referer": f"https://steamcommunity.com/market/listings/{int(appid)}/{group_id}"},
+                         "Referer": f"https://steamcommunity.com/market/listings/{int(appid)}/{quote(name, safe='')}"},
                 timeout=25)
         if response.status_code != 200:
             return {"error": f"market_order_book_http_{response.status_code}"}
@@ -601,7 +628,8 @@ def fetch_new_market_price(name, appid):
             "price_currency_name": PRICE_CURRENCY_NAMES.get(currency, str(currency)),
             "volume": str(data.get("cSellOrders") or ""),
             "source": "market_order_book",
-            "market_group_id": group_id,
+            "market_group_id": suggestion.get("market_group_id"),
+            "name_zh": suggestion.get("name_zh") or "",
         }
         if currency != int(CONFIG["currency"]):
             estimate, estimate_source = estimate_cny_from_steam_page_price({
@@ -789,6 +817,7 @@ def item_view(it):
         **compute(it),
         "appid": appid,
         "game": GAMES.get(appid, {}).get("name", str(appid)),
+        "name_zh": it.get("name_zh") or pc.get("name_zh") or "",
         "lowest": pc.get("lowest"),
         "median": pc.get("median"),
         "volume": pc.get("volume"),

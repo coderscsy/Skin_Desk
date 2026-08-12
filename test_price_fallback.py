@@ -100,7 +100,8 @@ def test_new_market_order_book_returns_native_cny_lowest():
     }}
     fake = FakeHistorySteam(Response(200, payload=payload))
     with patch.object(A, "STEAM", fake), \
-         patch.object(A, "resolve_market_group_id", return_value="G1890263004"):
+         patch.object(A, "fetch_market_search_page_price", return_value={"error": "unavailable"}), \
+         patch.object(A, "fetch_market_suggestion", return_value={"name_zh": "变革武器箱", "market_group_id": "G1890263004"}):
         row = A.fetch_new_market_price("Revolution Case", 730)
     assert row["lowest"] == 2.36 and row["price_currency"] == 23, row
     assert row["source"] == "market_order_book" and row["volume"] == "382275", row
@@ -113,7 +114,8 @@ def test_new_market_order_book_converts_jpy_instead_of_falling_into_rate_limit()
     }}
     fake = FakeHistorySteam(Response(200, payload=payload))
     with patch.object(A, "STEAM", fake), \
-         patch.object(A, "resolve_market_group_id", return_value="G1890263004"):
+         patch.object(A, "fetch_market_search_page_price", return_value={"error": "unavailable"}), \
+         patch.object(A, "fetch_market_suggestion", return_value={"name_zh": "变革武器箱", "market_group_id": "G1890263004"}):
         row = A.fetch_new_market_price("Revolution Case", 730)
     assert row["lowest"] == 2.78 and row["error"] is None, row
     assert row["source"] == "market_order_book_fx", row
@@ -122,7 +124,17 @@ def test_new_market_order_book_converts_jpy_instead_of_falling_into_rate_limit()
 
 def test_market_search_page_returns_exact_native_cny_price():
     row = A.parse_market_search_page_price(PAGE_CNY_SEARCH, "Revolution Case")
-    assert row == {"cents": 241, "currency": 23, "volume": 384163}, row
+    assert row == {"cents": 241, "currency": 23, "volume": 384163,
+                   "name_zh": "变革武器箱"}, row
+
+
+def test_market_suggestion_returns_official_chinese_name():
+    payload = {"results": [{
+        "market_name": "蛇噬武器箱", "market_hash_name": "G188B253004",
+        "app_id": 730, "listing_count": 0,
+    }]}
+    row = A.parse_market_suggestion(payload, 730)
+    assert row == {"name_zh": "蛇噬武器箱", "market_group_id": "G188B253004"}, row
 
 
 def test_estimate_cny_accepts_currency_name_from_old_cache():
