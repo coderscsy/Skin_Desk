@@ -1,4 +1,5 @@
 @echo off
+@chcp 65001 >nul
 setlocal
 title Skin Desk
 cd /d "%~dp0"
@@ -34,8 +35,16 @@ if not exist ".venv\Scripts\python.exe" (
   ".venv\Scripts\python.exe" -m pip install --upgrade pip >nul
   if exist "requirements.txt" (
     ".venv\Scripts\python.exe" -m pip install -r requirements.txt
+    if errorlevel 1 (
+      echo [重试] 官方下载源连接失败，正在自动切换到国内镜像...
+      ".venv\Scripts\python.exe" -m pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+    )
   ) else (
     ".venv\Scripts\python.exe" -m pip install flask requests
+    if errorlevel 1 (
+      echo [重试] 官方下载源连接失败，正在自动切换到国内镜像...
+      ".venv\Scripts\python.exe" -m pip install flask requests -i https://pypi.tuna.tsinghua.edu.cn/simple
+    )
   )
   if errorlevel 1 goto piperr
   echo [完成] 运行环境准备完毕。
