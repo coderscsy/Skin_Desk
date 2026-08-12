@@ -31,3 +31,10 @@ def test_steam_history_chart_has_hover_tooltip():
     assert "function bindSteamHistoryHover" in html
     assert 'addEventListener("pointerenter"' in html
     assert 'addEventListener("pointermove"' in html
+
+
+def test_compact_view_hides_verbose_status_details():
+    html = Path(__file__).with_name("index.html").read_text(encoding="utf-8")
+    assert '<th class="l status-col">状态</th>' in html
+    assert 'class="l status-col"' in html
+    assert ".compact-view .status-col .msg{display:none}" in html

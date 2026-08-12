@@ -350,6 +350,8 @@
   .compact-view th:nth-child(9),.compact-view td:nth-child(9),
   .compact-view th:nth-child(12),.compact-view td:nth-child(12),
     .compact-view th:nth-child(16),.compact-view td:nth-child(16){display:none}
+  .compact-view .status-col .msg{display:none}
+  .compact-view .status-col{min-width:86px;width:86px;white-space:nowrap}
   .compact-view table{min-width:1060px}
   .iconbtn{padding:6px 9px}
   .empty{margin-top:0;border-radius:12px}
@@ -502,7 +504,7 @@
         <th>到手 = 挂出价</th>
         <th>盈亏</th>
         <th class="l">出售时间</th>
-        <th class="l">状态</th>
+        <th class="l status-col">状态</th>
               <th class="batch-profit-col">本批盈利</th>
               <th class="batch-total-col">本批总额</th>
         <th class="l">交易链接</th>
@@ -856,7 +858,7 @@ function render(){
       <td class="cell-profit ${pc.profitCls}">${pc.profit}</td>
       <td class="l"><input class="dt" type="datetime-local" value="${toLocalInput(it.sell_at)}" data-k="sell_at" ${ro}>
           <span class="cd" data-cd="${it.id}"></span></td>
-      <td class="l"><span class="badge ${it.status}">${statusText(it.status)}</span>
+      <td class="l status-col"><span class="badge ${it.status}">${statusText(it.status)}</span>
           ${it.last_msg?`<div class="msg">${esc(it.last_msg)}</div>`:''}${sold&&it.sold_at?`<div class="msg">售出时间：${new Date(it.sold_at*1000).toLocaleString()}</div>`:''}</td>
       <td class="batch-profit-col ${batchProfit.cls}">${batchProfit.html}</td>
       <td class="batch-total-col">${batchTotal}</td>
