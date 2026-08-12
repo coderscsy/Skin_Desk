@@ -121,6 +121,7 @@ OPERATIONS = []           # 最近操作流水
 JOBS = {}                 # 后台批量任务
 PRICE_CACHE = {}          # name -> {lowest, median, volume, error, ts}
 PRICE_OVERVIEW_COOLDOWN_UNTIL = 0
+MARKET_SEARCH_COOLDOWN_UNTIL = 0
 HISTORY_CACHE = {}        # (appid, name) -> {points, ts, error, cooldown_until}
 _steam_client = None      # 复用的 steampy 客户端（仅旧的“送出/发货”用）
 
@@ -307,6 +308,132 @@ def parse_price(s):
     s = s.replace(",", "")
     m = re.search(r"\d+(\.\d+)?", s)
     return float(m.group()) if m else None
+
+
+def _positive_appid(value):
+    """把用户输入转换为有效 appid；0、空值和非法值表示需要自动识别。"""
+    try:
+        value = int(float(value))
+        return value if value > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _market_name_key(value):
+    return " ".join(html.unescape(str(value or "")).split()).casefold()
+
+
+def fetch_global_market_identity(name):
+    """从 Steam 全市场搜索中精确解析 appid 和标准 market_hash_name。"""
+    global MARKET_SEARCH_COOLDOWN_UNTIL
+    if MARKET_SEARCH_COOLDOWN_UNTIL > time.time():
+        return None, "Steam 市场搜索限流冷却中"
+    try:
+        response = SESSION.get(
+            "https://steamcommunity.com/market/search/render/",
+            params={
+                "query": name,
+                "start": 0,
+                "count": 20,
+                "search_descriptions": 0,
+                "sort_column": "popular",
+                "sort_dir": "desc",
+                "norender": 1,
+            },
+            headers={"Referer": "https://steamcommunity.com/market/search"},
+            timeout=15,
+        )
+        if response.status_code == 429:
+            MARKET_SEARCH_COOLDOWN_UNTIL = time.time() + 1800
+            return None, "Steam 市场搜索触发限流，30 分钟后重试"
+        if response.status_code != 200:
+            return None, f"Steam 市场搜索返回 HTTP {response.status_code}"
+        payload = response.json()
+    except Exception as e:
+        return None, "Steam 市场搜索失败：" + friendly_steam_error(e)
+
+    wanted = _market_name_key(name)
+    matches = {}
+    for row in payload.get("results") or []:
+        description = row.get("asset_description") or {}
+        market_hash_name = str(
+            row.get("hash_name") or description.get("market_hash_name") or ""
+        ).strip()
+        appid = _positive_appid(description.get("appid") or row.get("appid"))
+        if not appid or not market_hash_name or _market_name_key(market_hash_name) != wanted:
+            continue
+        key = (appid, market_hash_name)
+        matches[key] = {
+            "appid": appid,
+            "market_hash_name": market_hash_name,
+            "app_name": str(row.get("app_name") or description.get("app_name") or appid),
+        }
+    if len(matches) == 1:
+        return next(iter(matches.values())), None
+    if len(matches) > 1:
+        games = "、".join(sorted({x["app_name"] for x in matches.values()}))
+        return None, f"找到多个同名商品（{games}），请手动选择游戏"
+    return None, "Steam 全市场未找到完全匹配的英文商品名"
+
+
+def resolve_missing_market_items(force=False):
+    """自动补齐监控项的 appid，并把结果写回 watchlist 作为持久映射。"""
+    with LOCK:
+        snapshot = list(ITEMS)
+
+    known = {}
+    for item in snapshot:
+        appid = _positive_appid(item.get("appid"))
+        market_name = str(item.get("market_hash_name") or item.get("name") or "").strip()
+        if appid and market_name:
+            known.setdefault(_market_name_key(market_name), {})[(appid, market_name)] = {
+                "appid": appid,
+                "market_hash_name": market_name,
+                "app_name": GAMES.get(appid, {}).get("name", str(appid)),
+            }
+
+    changed = False
+    for item in snapshot:
+        if _positive_appid(item.get("appid")):
+            continue
+        name = str(item.get("name") or "").strip()
+        if not name:
+            continue
+        last_lookup = float(item.get("market_lookup_ts") or 0)
+        if not force and last_lookup and time.time() - last_lookup < CONFIG["cache_ttl"]:
+            continue
+
+        local_matches = known.get(_market_name_key(name), {})
+        if len(local_matches) == 1:
+            identity, error = next(iter(local_matches.values())), None
+        elif len(local_matches) > 1:
+            identity, error = None, "本地已有多个同名商品，请手动选择游戏"
+        else:
+            identity, error = fetch_global_market_identity(name)
+
+        with LOCK:
+            if _positive_appid(item.get("appid")):
+                continue
+            item["market_lookup_ts"] = time.time()
+            if identity:
+                item["appid"] = identity["appid"]
+                item["name"] = identity["market_hash_name"]
+                item["market_hash_name"] = identity["market_hash_name"]
+                item["market_app_name"] = identity["app_name"]
+                item.pop("market_lookup_error", None)
+                known.setdefault(_market_name_key(item["name"]), {})[
+                    (item["appid"], item["name"])
+                ] = identity
+                print(f"[市场识别] {name} → {identity['app_name']} / appid {identity['appid']}")
+            else:
+                item["market_lookup_error"] = error
+                print(f"[市场识别] {name}：{error}")
+            changed = True
+        if not local_matches:
+            time.sleep(2)
+
+    if changed:
+        save_items()
 
 
 def parse_buff_goods_payload(payload, name):
@@ -715,6 +842,7 @@ def price_refresher():
     """后台线程：轮流刷新过期价格，单条之间留间隔以防限流。"""
     while True:
         try:
+            resolve_missing_market_items()
             with LOCK:
                 keys = sorted({(item_appid(it), it["name"]) for it in ITEMS})
             for appid, name in keys:
@@ -730,6 +858,7 @@ def price_refresher():
 
 def refresh_prices_once(force=False):
     """手动刷新当前监控表价格；失败时保留旧成功价格。"""
+    resolve_missing_market_items(force=force)
     refreshed = 0
     limited = 0
     errors = 0
@@ -824,12 +953,14 @@ def compute(it):
 
 def item_view(it):
     appid = item_appid(it)
+    display_appid = appid if _positive_appid(it.get("appid")) else 0
     pc = PRICE_CACHE.get((appid, it["name"]), {})
     return {
         **it,
         **compute(it),
-        "appid": appid,
-        "game": GAMES.get(appid, {}).get("name", str(appid)),
+        "appid": display_appid,
+        "game": GAMES.get(display_appid, {}).get("name", "自动识别" if not display_appid else str(display_appid)),
+        "market_lookup_error": it.get("market_lookup_error"),
         "name_zh": it.get("name_zh") or pc.get("name_zh") or "",
         "lowest": pc.get("lowest"),
         "median": pc.get("median"),
@@ -1254,9 +1385,9 @@ def api_add_item():
     except Exception:
         qty = 1
     try:
-        appid = int(body.get("appid", 730) or 730)
+        appid = _positive_appid(body.get("appid"))
     except Exception:
-        appid = 730
+        appid = None
     it = {
         "id": str(int(time.time() * 1000)),
         "name": name,
@@ -1305,9 +1436,9 @@ def api_update_item(iid):
                         it["operation_qty"] = 1
                 if "appid" in body:
                     try:
-                        it["appid"] = int(float(it.get("appid") or 730))
+                        it["appid"] = _positive_appid(it.get("appid"))
                     except Exception:
-                        it["appid"] = 730
+                        it["appid"] = None
                 if "listing_price" in body:
                     try:
                         it["listing_price"] = max(0, round(float(it.get("listing_price") or 0), 2))

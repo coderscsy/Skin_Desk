@@ -602,17 +602,18 @@ function priceRefs(it){
 }
 function priceDisplay(it, priceNote){
   const steamMain = it.lowest!=null ? `<span class="price">${fmt(it.lowest)}</span>${priceNote}` : "";
-  const steamState = it.lowest==null ? `<span class="dim">${it.price_error==='rate_limited'?'Steam 限流冷却中':it.price_error?'Steam 无人民币价':'…'}</span>` : "";
+  const steamState = it.lowest==null ? `<span class="dim">${it.market_lookup_error||it.price_error==='rate_limited'?'Steam 限流冷却中':it.price_error?'Steam 无人民币价':'自动识别游戏中…'}</span>` : "";
   const refs = priceRefs(it);
   if(it.buff_price!=null){
     return `<span class="price">${fmt(it.buff_price)}</span><span class="sub stale">BUFF 参考价${it.buff_sell_num!=null?' · 在售 '+esc(it.buff_sell_num):''}</span>${steamMain?`<span class="sub">Steam CNY ${fmt(it.lowest)}</span>`:steamState}${refs}`;
   }
   return steamMain ? `${steamMain}${refs}` : `${steamState}${refs}`;
 }
-function gameOptionsHTML(sel){
-  return (CFG.games||[]).map(g=>`<option value="${g.appid}" ${(+sel===+g.appid)?'selected':''}>${esc(g.name)}</option>`).join("");
+function gameOptionsHTML(sel, allowAuto=false){
+  const auto=allowAuto?`<option value="0" ${(+sel===0)?'selected':''}>自动识别（全市场）</option>`:"";
+  return auto+(CFG.games||[]).map(g=>`<option value="${g.appid}" ${(+sel===+g.appid)?'selected':''}>${esc(g.name)}</option>`).join("");
 }
-function gameName(appid){ const g=(CFG.games||[]).find(x=>+x.appid===+appid); return g?g.name:('appid '+appid); }
+function gameName(appid){ if(!+appid)return "自动识别"; const g=(CFG.games||[]).find(x=>+x.appid===+appid); return g?g.name:('appid '+appid); }
 
 /* ---------------- toast ---------------- */
 function toast(title, body, kind){
@@ -643,7 +644,7 @@ document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeModal(); });
 /* ---------------- config / banner ---------------- */
 async function loadConfig(){
   try{ CFG = Object.assign(CFG, await (await fetch("/api/config")).json()); }catch(e){}
-  const ag=$("#addGame"); if(ag) ag.innerHTML=gameOptionsHTML(+ag.value||730);   // 填游戏下拉
+  const ag=$("#addGame"); if(ag) ag.innerHTML=gameOptionsHTML(ag.value===""?0:+ag.value,true);   // 支持全市场自动识别
   const sig=$("#set_inv_game"); if(sig) sig.innerHTML=gameOptionsHTML(APP_SETTINGS.inventory_appid||730);
   const b = $("#banner");
   const trade = CFG.enable_trade
@@ -844,7 +845,7 @@ function render(){
     if(sold) tr.classList.add("readonly");
     tr.innerHTML = `
       <td class="c"><input type="checkbox" class="rowchk" data-id="${it.id}" ${selected.has(it.id)?'checked':''} ${sold?'disabled title="已售出记录只读"':''}></td>
-      <td><select class="gsel" data-k="appid" ${ro}>${gameOptionsHTML(it.appid||730)}</select></td>
+      <td><select class="gsel" data-k="appid" ${ro}>${gameOptionsHTML(it.appid??0,true)}</select></td>
       <td class="l">${itemDisplayName(it)!==it.name?`<div class="item-name-zh">${esc(itemDisplayName(it))}</div>`:""}<input class="name ${itemDisplayName(it)!==it.name?'item-name-en':''}" value="${esc(it.name)}" data-k="name" ${ro}>${vol}</td>
       <td><input class="num" type="number" step="1" min="1" value="${it.operation_qty||1}" data-k="operation_qty" style="width:46px" ${ro}>
         <span class="sub">总 ${(+it.steam_inventory_count||0)+(+it.steam_listing_count||0)+(+it.steam_pending_count||0)}</span>
