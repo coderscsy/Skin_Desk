@@ -491,7 +491,8 @@ def fetch_market_suggestion(name, appid):
             response = STEAM.authenticated_get(
                 "https://steamcommunity.com/market/searchsuggestionsresults",
                 params={"q": name, "appid": int(appid), "l": "schinese"},
-                headers={"Referer": "https://steamcommunity.com/market/"}, timeout=20)
+                headers={"Referer": f"https://steamcommunity.com/market/search?appid={int(appid)}"},
+                timeout=20)
         if response.status_code != 200:
             return None
         return parse_market_suggestion(response.json(), appid)
@@ -602,16 +603,13 @@ def fetch_listing_page_price(name, appid, original_error):
 def fetch_new_market_price(name, appid):
     """读取新版 G... 商品页嵌入的实时卖单簿；仅接受 Steam 原生人民币值。"""
     try:
-        search_result = fetch_market_search_page_price(name, appid)
-        if search_result.get("lowest") is not None and not search_result.get("error"):
-            return search_result
         suggestion = fetch_market_suggestion(name, appid) or {}
         url = "https://steamcommunity.com/market/orderbook"
         with STEAM_LOCK:
             response = STEAM.authenticated_get(
                 url, params={"q": "Load", "qp": json.dumps([int(appid), name], separators=(",", ":"))},
                 headers={"x-valve-request-type": "queryAction",
-                         "Referer": f"https://steamcommunity.com/market/listings/{int(appid)}/{quote(name, safe='')}"},
+                         "Referer": f"https://steamcommunity.com/market/search?appid={int(appid)}"},
                 timeout=25)
         if response.status_code != 200:
             return {"error": f"market_order_book_http_{response.status_code}"}

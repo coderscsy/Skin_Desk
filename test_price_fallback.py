@@ -100,7 +100,7 @@ def test_new_market_order_book_returns_native_cny_lowest():
     }}
     fake = FakeHistorySteam(Response(200, payload=payload))
     with patch.object(A, "STEAM", fake), \
-         patch.object(A, "fetch_market_search_page_price", return_value={"error": "unavailable"}), \
+         patch.object(A, "fetch_market_search_page_price", side_effect=AssertionError("must not scrape market search HTML")), \
          patch.object(A, "fetch_market_suggestion", return_value={"name_zh": "变革武器箱", "market_group_id": "G1890263004"}):
         row = A.fetch_new_market_price("Revolution Case", 730)
     assert row["lowest"] == 2.36 and row["price_currency"] == 23, row
@@ -114,7 +114,7 @@ def test_new_market_order_book_converts_jpy_instead_of_falling_into_rate_limit()
     }}
     fake = FakeHistorySteam(Response(200, payload=payload))
     with patch.object(A, "STEAM", fake), \
-         patch.object(A, "fetch_market_search_page_price", return_value={"error": "unavailable"}), \
+         patch.object(A, "fetch_market_search_page_price", side_effect=AssertionError("must not scrape market search HTML")), \
          patch.object(A, "fetch_market_suggestion", return_value={"name_zh": "变革武器箱", "market_group_id": "G1890263004"}):
         row = A.fetch_new_market_price("Revolution Case", 730)
     assert row["lowest"] == 2.78 and row["error"] is None, row
