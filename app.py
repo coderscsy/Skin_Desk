@@ -945,10 +945,10 @@ def api_price_history():
     try:
         with STEAM_LOCK:
             STEAM.ensure_ready()
-            r = STEAM.session.get("https://steamcommunity.com/market/pricehistory/",
-                                  params={"appid": appid, "market_hash_name": name},
-                                  headers={"Referer": f"https://steamcommunity.com/market/listings/{appid}/{quote(name, safe='')}"},
-                                  timeout=25)
+            r = STEAM.authenticated_get("https://steamcommunity.com/market/pricehistory/",
+                                        params={"appid": appid, "market_hash_name": name},
+                                        headers={"Referer": f"https://steamcommunity.com/market/listings/{appid}/{quote(name, safe='')}"},
+                                        timeout=25)
             if r.status_code in (401, 403):
                 raise NeedAuth("Steam 会话已失效，请重新登录")
             if r.status_code == 429:
@@ -1005,12 +1005,27 @@ def api_inventory():
             items = STEAM.fetch_inventory_items(appid, ctx)
         except NeedAuth:
             return jsonify({"error": "need_auth"}), 401
+        except RuntimeError as e:
+            msg = str(e)
+            return jsonify({"error": msg}), 429 if "429" in msg else 502
         except Exception as e:
             return jsonify({"error": f"拉 {gname} 库存失败：{e}"}), 502
         try:
             valid = STEAM.check_session()   # 会话失效时库存只返回公开部分，会缺东西
         except Exception:
             valid = True
+    localized = {x.get("market_hash_name"): (x.get("name_zh") or "").strip() for x in items}
+    changed = False
+    with LOCK:
+        for it in ITEMS:
+            if item_appid(it) != appid:
+                continue
+            name_zh = localized.get(it.get("name"))
+            if name_zh and it.get("name_zh") != name_zh:
+                it["name_zh"] = name_zh
+                changed = True
+        if changed:
+            save_items()
     return jsonify({"appid": appid, "game": gname, "count": len(items),
                     "items": items, "session_valid": valid})
 
@@ -1032,6 +1047,7 @@ def api_add_item():
     it = {
         "id": str(int(time.time() * 1000)),
         "name": name,
+        "name_zh": (body.get("name_zh") or "").strip(),
         "appid": appid,                   # 游戏：CS2=730 / Rust=252490 / TF2=440 / Dota2=570 ...
         "qty": qty,                       # 上架数量（每件挂 qty 个单）
         "operation_qty": qty,             # 本次操作数量；与 Steam 实际总数分离
@@ -1059,9 +1075,11 @@ def api_update_item(iid):
             if it["id"] == iid:
                 if it.get("status") == "sold":
                     return jsonify({"error": "已售出记录只读，不能修改"}), 409
-                for k in ("name", "purchase", "markup", "fee", "listing_price", "sell_at", "status", "trade_url", "qty", "operation_qty", "appid"):
+                for k in ("name", "name_zh", "purchase", "markup", "fee", "listing_price", "sell_at", "status", "trade_url", "qty", "operation_qty", "appid"):
                     if k in body:
                         it[k] = body[k]
+                if "name_zh" in body:
+                    it["name_zh"] = (it.get("name_zh") or "").strip()
                 if "qty" in body:
                     try:
                         it["qty"] = max(1, int(float(it.get("qty") or 1)))
@@ -1374,12 +1392,14 @@ def api_steam_sync():
         for idx, (appid, name) in enumerate(sorted(discovered)):
             if (appid, name) in existing:
                 continue
-            inv_count = sum(1 for x in (inventories.get(appid, {}).get(name) or []) if x.get("marketable", 1))
+            copies = inventories.get(appid, {}).get(name) or []
+            inv_count = sum(1 for x in copies if x.get("marketable", 1))
+            name_zh = next((x.get("name_zh") for x in copies if x.get("name_zh")), "")
             active_count = sum(1 for x in active_rows if x["appid"] == appid and x["name"] == name)
             hidden_count = sum(1 for x in hidden_rows if x["appid"] == appid and x["name"] == name)
             status = "pending" if hidden_count else ("listed" if active_count else "watching")
             it = {
-                "id": f"sync-{time.time_ns()}-{idx}", "name": name, "appid": appid,
+                "id": f"sync-{time.time_ns()}-{idx}", "name": name, "name_zh": name_zh, "appid": appid,
                 "qty": max(1, inv_count + active_count + hidden_count),
                 "operation_qty": max(1, inv_count or 1),
                 "purchase": 0.0, "markup": 0.0, "fee": 15.0, "listing_price": 0.0,
@@ -1393,7 +1413,11 @@ def api_steam_sync():
         for it in targets:
             appid = item_appid(it)
             name = it["name"]
-            inv_count = sum(1 for x in (inventories.get(appid, {}).get(name) or []) if x.get("marketable", 1))
+            copies = inventories.get(appid, {}).get(name) or []
+            inv_count = sum(1 for x in copies if x.get("marketable", 1))
+            name_zh = next((x.get("name_zh") for x in copies if x.get("name_zh")), "")
+            if name_zh:
+                it["name_zh"] = name_zh
             active_count = sum(1 for x in active_rows if x["appid"] == appid and x["name"] == name)
             hidden_count = sum(1 for x in hidden_rows if x["appid"] == appid and x["name"] == name)
             apply_steam_sync_state(it, inv_count, active_count, hidden_count, now)

@@ -25,11 +25,12 @@ def main():
 
     # 2) 添加 Rust 物品 -> appid/game/到手价 正确
     r = client.post("/api/items", json={
-        "name": "Panda Rug", "appid": 252490, "qty": 2,
+        "name": "Panda Rug", "name_zh": "熊猫地毯", "appid": 252490, "qty": 2,
         "purchase": 100, "listing_price": 120, "fee": 13})
     j = r.get_json()
     assert j["appid"] == 252490 and j["game"] == "Rust", j
     assert j["qty"] == 2, j
+    assert j["name"] == "Panda Rug" and j["name_zh"] == "熊猫地毯", j
     # 买家价 ¥120，按 Steam 整分手续费反算到手，不再直接粗暴乘 (1-fee)
     assert j["listing"] <= 120 and j["listing"] > 119.8, j
     assert j["net"] == 106.2, j

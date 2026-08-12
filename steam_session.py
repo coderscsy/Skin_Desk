@@ -89,6 +89,20 @@ def _looks_logged_out(s) -> str:
     return any(k in s for k in ("logged in", "log in", "sign in", "not been logged", "please login"))
 
 
+def _retry_seconds_from_headers(headers, default=3):
+    raw = (headers.get("Retry-After") or "").strip()
+    try:
+        return max(0, int(float(raw)))
+    except Exception:
+        return default
+
+
+def localized_inventory_name(description: dict, market_hash_name: str) -> str:
+    """返回 Steam 官方本地化名称，缺失时保留稳定的市场英文名。"""
+    value = (description.get("market_name") or description.get("name") or "").strip()
+    return value or market_hash_name
+
+
 def parse_inventory(data: dict) -> dict:
     """把 Steam 库存 JSON 解析成 {market_hash_name: [{'assetid','marketable'}, ...]}。
     抽成纯函数方便单测。"""
@@ -108,6 +122,7 @@ def parse_inventory(data: dict) -> dict:
         out.setdefault(name, []).append({
             "assetid": str(a.get("assetid")),
             "marketable": int(d.get("marketable", 0) or 0),
+            "name_zh": localized_inventory_name(d, name),
         })
     return out
 
@@ -130,9 +145,11 @@ def parse_inventory_items(data: dict) -> list:
             continue
         e = agg.get(name)
         if not e:
+            name_zh = localized_inventory_name(d, name)
             e = agg[name] = {
                 "market_hash_name": name,
-                "name": d.get("name") or name,
+                "name": name_zh,
+                "name_zh": name_zh,
                 "count": 0,
                 "marketable": int(d.get("marketable", 0) or 0),
                 "tradable": int(d.get("tradable", 0) or 0),
@@ -457,6 +474,42 @@ class SteamSession:
             return True
         raise NeedAuth("尚未登录 Steam")
 
+    @staticmethod
+    def _read_response_needs_login(response):
+        if response.status_code in (401, 403):
+            return True
+        url = (getattr(response, "url", "") or "").lower()
+        if "/login/" in url:
+            return True
+        content_type = (response.headers.get("Content-Type") or "").lower()
+        text = (getattr(response, "text", "") or "")[:8000]
+        if "text/html" not in content_type and not text.lstrip().startswith("<"):
+            return False
+        lowered = text.lower()
+        return _looks_logged_out(text) or any(marker in lowered for marker in (
+            "newlogindialog", "g_steamid = false", "login_btn_signin", "/login/home/",
+        ))
+
+    def _renew_web_session_for_read(self):
+        """用本地 token 重建 Web Cookie；token 值不离开后端。"""
+        if not self.access_token and not self.refresh_token:
+            raise NeedAuth("Steam 会话已失效，请重新登录")
+        self._del_cookie("steamLoginSecure")
+        self._mint_web_cookies()
+        self._save()
+
+    def authenticated_get(self, url, **kwargs):
+        """账号读取统一入口：会话失效时续期并只重试一次。"""
+        if self.access_token or self.refresh_token or self._has_cookies():
+            self.ensure_ready()
+        response = self.session.get(url, **kwargs)
+        if not self._read_response_needs_login(response):
+            return response
+        if not self.access_token and not self.refresh_token:
+            return response
+        self._renew_web_session_for_read()
+        return self.session.get(url, **kwargs)
+
     # -------------------- 库存 / 上架 -------------------- #
     def _inventory_raw(self, appid, contextid):
         """拉某游戏库存的原始合并数据（assets+descriptions），自动翻页。
@@ -471,15 +524,31 @@ class SteamSession:
         merged = {"success": 1, "assets": [], "descriptions": []}
         last = None
         for _ in range(25):                       # 最多 25 页（5 万件）足够
-            params = {"l": "english", "count": 2000}
+            params = {"l": "schinese", "count": 2000}
             if last:
                 params["start_assetid"] = last
-            r = self.session.get(base, params=params, headers=headers, timeout=25)
-            if r.status_code in (401, 403):
-                raise NeedAuth("拉库存被拒（会话失效，或该库存设了私密）")
-            if r.status_code != 200:
-                raise RuntimeError(f"库存接口返回 HTTP {r.status_code}（不是空库存，是接口报错）")
-            data = r.json()
+            for attempt in range(3):
+                try:
+                    r = self.authenticated_get(base, params=params, headers=headers, timeout=12)
+                except Exception:
+                    if attempt >= 2:
+                        raise
+                    time.sleep(attempt + 1)
+                    continue
+                if r.status_code == 429:
+                    retry_after = _retry_seconds_from_headers(r.headers, default=5)
+                    if attempt >= 2:
+                        raise RuntimeError(f"库存接口返回 HTTP 429，重试后仍失败（请等待 {retry_after}s）")
+                    time.sleep(min(15, retry_after or 5))
+                    continue
+                if r.status_code in (401, 403):
+                    raise NeedAuth("拉库存被拒（会话失效，或该库存设了私密）")
+                if r.status_code != 200:
+                    raise RuntimeError(f"库存接口返回 HTTP {r.status_code}（不是空库存，是接口报错）")
+                data = r.json()
+                break
+            else:
+                raise RuntimeError("库存接口重试失败")
             if not isinstance(data, dict) or not data.get("success"):
                 break                             # 私密 / 真的空
             merged["assets"].extend(data.get("assets") or [])
@@ -554,7 +623,7 @@ class SteamSession:
         found = []
         start = 0
         for _ in range(20):
-            r = self.session.get(f"{COMMUNITY}/market/mylistings/render/", params={
+            r = self.authenticated_get(f"{COMMUNITY}/market/mylistings/render/", params={
                 "query": "", "start": start, "count": 100,
             }, headers={"Referer": f"{COMMUNITY}/market/"}, timeout=25)
             if r.status_code in (401, 403):
@@ -622,7 +691,7 @@ class SteamSession:
     def fetch_hidden_pending_listings(self):
         """读取市场返回中存在但未显示为正式挂单的隐藏/被吞待确认记录。"""
         self.ensure_ready()
-        r = self.session.get(f"{COMMUNITY}/market/mylistings/render/", params={
+        r = self.authenticated_get(f"{COMMUNITY}/market/mylistings/render/", params={
             "query": "", "start": 0, "count": 100,
         }, headers={"Referer": f"{COMMUNITY}/market/"}, timeout=25)
         if r.status_code in (401, 403):

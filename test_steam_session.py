@@ -96,14 +96,18 @@ def test_parse_inventory():
             {"assetid": "444", "classid": "cX", "instanceid": "iX"},   # 无对应描述 -> 跳过
         ],
         "descriptions": [
-            {"classid": "c1", "instanceid": "i1", "market_hash_name": "Snakebite Case", "marketable": 1},
-            {"classid": "c2", "instanceid": "0", "market_hash_name": "AK-47 | Redline", "marketable": 0},
+            {"classid": "c1", "instanceid": "i1", "market_hash_name": "Snakebite Case", "market_name": "蛇噬武器箱", "name": "蛇噬武器箱", "marketable": 1},
+            {"classid": "c2", "instanceid": "0", "market_hash_name": "AK-47 | Redline", "market_name": "AK-47 | 红线", "name": "AK-47 | 红线", "marketable": 0},
         ],
     }
     out = ss.parse_inventory(data)
     assert set(out.keys()) == {"Snakebite Case", "AK-47 | Redline"}, out
     assert [x["assetid"] for x in out["Snakebite Case"]] == ["111", "222"], out
     assert out["AK-47 | Redline"][0]["marketable"] == 0
+    assert out["Snakebite Case"][0]["name_zh"] == "蛇噬武器箱"
+    items = ss.parse_inventory_items(data)
+    assert items[0]["market_hash_name"] == "Snakebite Case", items
+    assert items[0]["name_zh"] == "蛇噬武器箱", items
     assert ss.parse_inventory({"success": 0}) == {}
     assert ss.parse_inventory({}) == {}
     print("  ok  库存解析 name->assetid（含同款多件 / 缺描述 / marketable）")

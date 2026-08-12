@@ -156,6 +156,13 @@
   .badge.sold{background:rgba(101,120,139,.22);color:var(--text)}
   .badge.error{background:rgba(232,115,107,.16);color:var(--down)}
   .cd{font-family:var(--mono);font-size:12px;color:var(--warn);margin-top:3px;display:block}
+  .batch-profit-col{min-width:124px;white-space:nowrap}
+  .batch-profit-total{font-family:var(--mono);font-size:15px;font-weight:800}
+  .item-name-zh{font-weight:750;color:var(--text-strong);line-height:1.35}
+  td input.item-name-en{font-size:11px;color:var(--muted);margin-top:2px}
+  .sold-group td{padding:8px 12px;background:color-mix(in srgb,var(--panel-2) 90%,transparent);border-top:1px solid var(--line)}
+  .sold-group-toggle{width:100%;display:flex;align-items:center;justify-content:space-between;background:transparent;border:0;color:var(--muted);font-weight:750;cursor:pointer;text-align:left}
+  .sold-group-toggle:hover{color:var(--text)}
 
   td.act{white-space:nowrap}
   .iconbtn{background:transparent;border:1px solid var(--line);color:var(--muted);padding:5px 8px;
@@ -337,8 +344,8 @@
   .compact-view th:nth-child(7),.compact-view td:nth-child(7),
   .compact-view th:nth-child(9),.compact-view td:nth-child(9),
   .compact-view th:nth-child(12),.compact-view td:nth-child(12),
-  .compact-view th:nth-child(14),.compact-view td:nth-child(14){display:none}
-  .compact-view table{min-width:940px}
+  .compact-view th:nth-child(15),.compact-view td:nth-child(15){display:none}
+  .compact-view table{min-width:1060px}
   .iconbtn{padding:6px 9px}
   .empty{margin-top:0;border-radius:12px}
   @media(max-width:1180px){
@@ -491,6 +498,7 @@
         <th>盈亏</th>
         <th class="l">出售时间</th>
         <th class="l">状态</th>
+        <th class="batch-profit-col">本批盈利</th>
         <th class="l">交易链接</th>
         <th></th>
       </tr></thead>
@@ -510,6 +518,7 @@ let CFG = {currency:23, auto_list:false,
 let state = [];           // 当前物品（含计算值）
 let editing = null;       // 正在编辑的输入，避免被刷新覆盖
 let selected = new Set(); // 勾选要批量上架的物品 id
+let soldGroupExpanded = false;
 let AUTH = {logged_in:false};
 let pollTimer = null;     // 自动登录轮询
 let APP_SETTINGS = {my_trade_link:"", inventory_appid:730};
@@ -736,6 +745,17 @@ function priceCells(it){
   };
 }
 
+function batchProfitCell(it){
+  const qty=statQty(it);
+  const hasActual=it.status==="sold" && it.sold_profit!==null && it.sold_profit!==undefined && it.sold_profit!=="" && Number.isFinite(Number(it.sold_profit));
+  const unit=hasActual?Number(it.sold_profit):Number(it.profit);
+  if(!Number.isFinite(unit)) return {cls:"dim",html:'<span class="dim">暂无</span>'};
+  const total=+(unit*qty).toFixed(2);
+  const cls=total>0?"up":total<0?"down":"dim";
+  const kind=hasActual?"实际":"预估";
+  return {cls,html:`<span class="batch-profit-total">${signedFmt(total)}</span><span class="sub">${kind} · ${qty} 件 × ${signedFmt(unit)}</span>`};
+}
+
 function inventoryCheck(it){
   const available=Math.max(0, Number(it&&it.steam_inventory_count)||0);
   const requested=Math.max(1, Number(it&&it.operation_qty)||1);
@@ -748,12 +768,27 @@ function isListLocked(it){
   return it.status==="pending"||(+it.steam_pending_count||0)>0;
 }
 function isSold(it){ return it && it.status==="sold"; }
+function itemDisplayPriority(it){
+  if(it.status==="watching" || it.status==="listed") return 0;
+  if(it.status==="sold") return 2;
+  return 1;
+}
+function displayItems(){
+  return state.map((it,index)=>({it,index}))
+    .sort((a,b)=>itemDisplayPriority(a.it)-itemDisplayPriority(b.it)||a.index-b.index)
+    .map(x=>x.it);
+}
+function itemDisplayName(it){
+  return (it&&it.name_zh||"").trim() || (it&&it.name||"");
+}
 
 function render(){
   if(hasActiveEditor()) return;
   const tb=$("#rows"); tb.innerHTML="";
   $("#empty").style.display = state.length? "none":"block";
-  for(const it of state){
+  let soldGroupAdded=false;
+  const soldCount=state.filter(isSold).length;
+  for(const it of displayItems()){
     if(isSold(it)) selected.delete(it.id);
     const priceErr = it.price_error;
     const priceNote = it.price_stale
@@ -763,21 +798,31 @@ function render(){
     const vol = it.volume? `<span class="sub">日成交 ${it.volume}${it.median!=null?' · 中位 '+fmt(it.median):''}</span>`:"";
     const pc = priceCells(it);
     const sold=isSold(it);
+    if(sold && !soldGroupAdded){
+      const group=document.createElement("tr");
+      group.className="sold-group";
+      group.setAttribute("data-sold-group","1");
+      group.innerHTML=`<td colspan="16"><button class="sold-group-toggle" type="button" data-act="toggle-sold"><span data-sold-label>▸ 已售出（${soldCount}）</span><span>历史记录</span></button></td>`;
+      tb.appendChild(group);
+      soldGroupAdded=true;
+    }
     const ro=sold?'disabled readonly title="已售出记录只读"':'';
     const listLocked=isListLocked(it);
     const inv=inventoryCheck(it);
     const listDisabled=sold||listLocked||!inv.ok;
     const listTitle=sold?"已售出记录只读":(listLocked?"仍有挂单待确认，请先完成确认或清理待确认记录":(!inv.ok?inv.msg:""));
     const hasActiveListings=(+it.steam_listing_count||0)>0;
+    const batchProfit=batchProfitCell(it);
 
     const tr=document.createElement("tr");
     tr.dataset.id=it.id;
+    if(sold) tr.setAttribute("data-sold-item","1");
     if(selected.has(it.id)) tr.className="sel";
     if(sold) tr.classList.add("readonly");
     tr.innerHTML = `
       <td class="c"><input type="checkbox" class="rowchk" data-id="${it.id}" ${selected.has(it.id)?'checked':''} ${sold?'disabled title="已售出记录只读"':''}></td>
       <td><select class="gsel" data-k="appid" ${ro}>${gameOptionsHTML(it.appid||730)}</select></td>
-      <td class="l"><input class="name" value="${esc(it.name)}" data-k="name" ${ro}>${vol}</td>
+      <td class="l">${itemDisplayName(it)!==it.name?`<div class="item-name-zh">${esc(itemDisplayName(it))}</div>`:""}<input class="name ${itemDisplayName(it)!==it.name?'item-name-en':''}" value="${esc(it.name)}" data-k="name" ${ro}>${vol}</td>
       <td><input class="num" type="number" step="1" min="1" value="${it.operation_qty||1}" data-k="operation_qty" style="width:46px" ${ro}>
         <span class="sub">总 ${(+it.steam_inventory_count||0)+(+it.steam_listing_count||0)+(+it.steam_pending_count||0)}</span>
         ${(it.steam_sync_ts?`<span class="sub">库 ${it.steam_inventory_count||0} · 架 ${it.steam_listing_count||0} · 待 ${it.steam_pending_count||0}</span>`:'')}</td>
@@ -792,6 +837,7 @@ function render(){
           <span class="cd" data-cd="${it.id}"></span></td>
       <td class="l"><span class="badge ${it.status}">${statusText(it.status)}</span>
           ${it.last_msg?`<div class="msg">${esc(it.last_msg)}</div>`:''}${sold&&it.sold_at?`<div class="msg">售出时间：${new Date(it.sold_at*1000).toLocaleString()}</div>`:''}</td>
+      <td class="batch-profit-col ${batchProfit.cls}">${batchProfit.html}</td>
       <td class="l"><input class="tl" value="${esc(it.trade_url||'')}" data-k="trade_url" placeholder="收货 交易链接" ${ro}>
           <span class="tlhint" data-tl="${it.id}"></span></td>
       <td class="act">
@@ -901,6 +947,8 @@ function patchRow(id,it){
   tr.querySelector(".cell-net").innerHTML=pc.net;
   const pcell=tr.querySelector(".cell-profit");
   pcell.className="cell-profit "+pc.profitCls; pcell.innerHTML=pc.profit;
+  const batch=batchProfitCell(it), batchCell=tr.querySelector(".batch-profit-col");
+  if(batchCell){ batchCell.className="batch-profit-col "+batch.cls; batchCell.innerHTML=batch.html; }
 }
 
 function parseSteamHistoryTime(s){
@@ -1000,6 +1048,11 @@ async function openSteamHistory(it){
 /* ---------------- 行内操作按钮 ---------------- */
 $("#rows").addEventListener("click",async e=>{
   const btn=e.target.closest("button"); if(!btn) return;
+  if(btn.dataset.act==="toggle-sold"){
+    soldGroupExpanded=!soldGroupExpanded;
+    applyTableFilter();
+    return;
+  }
   const id=btn.closest("tr").dataset.id;
   const it=state.find(x=>x.id===id);
   if(btn.dataset.act==="history"){
@@ -1438,7 +1491,10 @@ function renderInvList(){
   const ov=$("#ov"); if(!ov) return;
   const onlyM=ov.querySelector("#invOnlyM").checked;
   const q=(ov.querySelector("#invSearch").value||"").trim().toLowerCase();
-  const rows=INV_ITEMS.map((it,i)=>({it,i})).filter(x=>(!onlyM||x.it.marketable)&&(!q||(x.it.name||x.it.market_hash_name||"").toLowerCase().includes(q)));
+  const rows=INV_ITEMS.map((it,i)=>({it,i})).filter(x=>{
+    const names=[x.it.name_zh,x.it.name,x.it.market_hash_name].filter(Boolean).join(" ").toLowerCase();
+    return (!onlyM||x.it.marketable)&&(!q||names.includes(q));
+  });
   const list=ov.querySelector("#invList");
   if(!rows.length){ list.innerHTML='<div style="padding:16px;color:var(--muted)">没有可显示的物品（库存私密/为空，或没有可上架的）</div>'; return; }
   list.innerHTML=rows.map(({it,i})=>{
@@ -1447,7 +1503,7 @@ function renderInvList(){
     // 受保护/暂不可上架的也能勾（预先加入，等解除保护再挂）
     return `<label style="display:flex;align-items:center;gap:10px;padding:7px 12px;border-bottom:1px solid var(--line);cursor:pointer;${can?'':'opacity:.75'}">
       <input type="checkbox" class="invchk" data-idx="${i}">${icon}
-      <span style="flex:1;font-size:13px;">${esc(it.name)}${it.count>1?` <span style="color:var(--muted)">×${it.count}</span>`:''}</span>
+      <span style="flex:1;font-size:13px;"><span class="item-name-zh">${esc(it.name_zh||it.name||it.market_hash_name)}</span>${(it.name_zh||it.name)!==it.market_hash_name?`<span class="sub item-name-en">${esc(it.market_hash_name)}</span>`:""}${it.count>1?` <span style="color:var(--muted)">×${it.count}</span>`:''}</span>
       ${can?'':'<span class="need" title="现在挂不了，加进来等交易保护解除/可售时再上架">暂不可上架·受保护</span>'}
     </label>`;
   }).join("");
@@ -1470,7 +1526,7 @@ async function invAddSelected(){
   for(const c of checks){
     const it=INV_ITEMS[+c.dataset.idx]; if(!it) continue;
     try{ const r=await fetch("/api/items",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({name:it.market_hash_name, appid, qty:it.count})}); if(r.ok) n++; }catch(e){}
+      body:JSON.stringify({name:it.market_hash_name, name_zh:it.name_zh||it.name||"", appid, qty:it.count})}); if(r.ok) n++; }catch(e){}
   }
   closeModal(); toast("已加入监控表",`${n} 种 · 直接填写上架价即可`,"ok"); load();
 }
@@ -1777,11 +1833,21 @@ loadConfig()
 let TABLE_QUERY = "";
 function applyTableFilter(){
   const q=TABLE_QUERY.trim().toLowerCase();
-  document.querySelectorAll("#rows tr").forEach(tr=>{
+  let soldMatches=0;
+  document.querySelectorAll("#rows tr[data-id]").forEach(tr=>{
     const it=state.find(x=>String(x.id)===String(tr.dataset.id));
-    const hay=it ? [it.name,gameName(it.appid),statusText(it.status),it.last_msg].join(" ").toLowerCase() : tr.textContent.toLowerCase();
-    tr.style.display=!q||hay.includes(q)?"":"none";
+    const hay=it ? [it.name_zh,it.name,gameName(it.appid),statusText(it.status),it.last_msg].filter(Boolean).join(" ").toLowerCase() : tr.textContent.toLowerCase();
+    const matches=!q||hay.includes(q);
+    if(it&&isSold(it)&&matches) soldMatches++;
+    tr.style.display=matches&&(!it||!isSold(it)||soldGroupExpanded||!!q)?"":"none";
   });
+  const group=document.querySelector('#rows tr[data-sold-group]');
+  if(group){
+    const count=state.filter(isSold).length;
+    group.style.display=(!q||soldMatches)?"":"none";
+    const label=group.querySelector("[data-sold-label]");
+    if(label) label.textContent=`${soldGroupExpanded||!!q?'▾':'▸'} 已售出（${count}）`;
+  }
 }
 const itemSearch=document.getElementById("itemSearch");
 if(itemSearch) itemSearch.addEventListener("input",e=>{TABLE_QUERY=e.target.value;applyTableFilter();});

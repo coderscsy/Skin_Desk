@@ -32,6 +32,17 @@ class FakeSession:
         return self.responses.pop(0)
 
 
+class FakeHistorySteam:
+    def __init__(self, response):
+        self.responses = FakeSession([response])
+
+    def ensure_ready(self):
+        return True
+
+    def authenticated_get(self, *args, **kwargs):
+        return self.responses.get(*args, **kwargs)
+
+
 def test_listing_page_parser():
     row = A.parse_listing_page_price(PAGE_SGD)
     assert row["cents"] == 52 and row["currency"] == 13, row
@@ -112,6 +123,23 @@ def test_steam_rate_limit_result_keeps_buff_reference_price():
     assert row["buff_price"] == 2.63, row
 
 
+def test_price_history_route_returns_json_points():
+    fake = FakeHistorySteam(Response(200, payload={
+        "success": True,
+        "prices": [["Aug 12 2026", 2.79, "1,234"]],
+    }))
+    with patch.object(A, "STEAM", fake):
+        if hasattr(A, "HISTORY_CACHE"):
+            A.HISTORY_CACHE.clear()
+        response = A.app.test_client().get(
+            "/api/price_history?appid=730&name=Revolution%20Case")
+    assert response.status_code == 200, response.get_data(as_text=True)
+    assert response.is_json, response.content_type
+    body = response.get_json()
+    assert body["name"] == "Revolution Case", body
+    assert body["points"] == [{"time": "Aug 12 2026", "price": 2.79, "volume": 1234}], body
+
+
 if __name__ == "__main__":
     test_listing_page_parser()
     test_429_falls_back_without_pretending_sgd_is_cny()
@@ -120,4 +148,5 @@ if __name__ == "__main__":
     test_cache_survives_restart()
     test_parse_buff_goods_payload_prefers_exact_market_hash_name()
     test_steam_rate_limit_result_keeps_buff_reference_price()
+    test_price_history_route_returns_json_points()
     print("ALL PASS")
