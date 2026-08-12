@@ -3,7 +3,9 @@
 """Steam 最低价降级与持久化测试（不联网、不改真实数据）。"""
 import os
 import tempfile
+import warnings
 from unittest.mock import patch
+from urllib3.exceptions import InsecureRequestWarning
 
 import app as A
 
@@ -17,6 +19,14 @@ amtMinSellOrder\":279,\"eCurrency\":23,\"cSellOrders\":12345'''
 PAGE_CNY_SSR = r'''window.SSR.renderContext=JSON.parse("{\"state\":{\"data\":{\"amtMaxBuyOrder\":235,\"amtMinSellOrder\":236,\"eCurrency\":23,\"cBuyOrders\":100,\"cSellOrders\":382275,\"rgCompactSellOrders\":[236,1,242,256,243,515]}}}")'''
 PAGE_CNY_SEARCH = r'''filterConfig":{"currency":{"eCurrency":23}}
 var g_rgPreviousPopularData = [{"name":"变革武器箱","hash_name":"Revolution Case","sell_listings":384163,"sell_price":241},{"name":"Other","hash_name":"Other Case","sell_listings":1,"sell_price":999}];'''
+
+
+def test_insecure_ssl_mode_replaces_repeated_english_warnings_with_chinese_notice():
+    with warnings.catch_warnings(record=True) as caught:
+        message = A.configure_ssl_warnings(False)
+        warnings.warn("unsafe", InsecureRequestWarning)
+    assert caught == []
+    assert "HTTPS 证书校验已关闭" in message
 
 
 class Response:

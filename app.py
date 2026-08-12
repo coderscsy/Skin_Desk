@@ -23,6 +23,8 @@ from datetime import datetime, timezone
 from urllib.parse import quote
 
 import requests
+import warnings
+from urllib3.exceptions import InsecureRequestWarning
 from flask import Flask, request, jsonify, send_from_directory, Response
 
 from steam_session import SteamSession, NeedAuth
@@ -133,6 +135,16 @@ SESSION.headers.update({
 })
 
 
+def configure_ssl_warnings(verify):
+    """把关闭证书校验产生的重复英文警告合并成一条中文提示。"""
+    if verify:
+        warnings.filterwarnings("default", category=InsecureRequestWarning)
+        return ""
+    warnings.filterwarnings("ignore", category=InsecureRequestWarning)
+    return ("[网络] HTTPS 证书校验已关闭，urllib3 重复英文警告已隐藏。"
+            "仅应配合可信的本机加速器/代理使用。")
+
+
 def apply_steam_proxy():
     """让价格、登录、库存和上架共用同一条加速器代理线路。"""
     proxy = str(CONFIG.get("steam_proxy") or "").strip()
@@ -146,6 +158,9 @@ def apply_steam_proxy():
     verify = bool(CONFIG.get("steam_ssl_verify", True))
     SESSION.verify = verify
     STEAM.session.verify = verify
+    notice = configure_ssl_warnings(verify)
+    if notice:
+        print(notice)
     return proxy
 
 
