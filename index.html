@@ -264,7 +264,7 @@
   .steam-chart{display:flex;flex-direction:column;gap:10px}
   .chart-meta{display:flex;gap:10px;flex-wrap:wrap;color:var(--muted);font-size:12px}
   .chart-meta b{color:var(--text-strong)}
-  .chartbox{width:100%;min-height:330px;border:1px solid var(--line);border-radius:12px;background:var(--panel-2);overflow:hidden}
+  .chartbox{position:relative;width:100%;min-height:330px;border:1px solid var(--line);border-radius:12px;background:var(--panel-2);overflow:hidden}
   .chartbox svg{display:block;width:100%;height:330px}
   .chartbox text{font-family:var(--mono);font-size:11px;fill:var(--muted)}
   .chartbox .axis{stroke:var(--muted);stroke-width:1;opacity:.55}
@@ -272,6 +272,10 @@
   .chartbox .price-line{fill:none;stroke:#a6d608;stroke-width:2}
   .chartbox .volume-bar{fill:#25527a;opacity:.55}
   .chartbox .dotp{fill:var(--panel-2);stroke:#a6d608;stroke-width:2}
+  .chartbox .chart-hover-target{fill:transparent;stroke:transparent;cursor:crosshair;pointer-events:all}
+  .chart-tooltip{position:absolute;z-index:4;display:none;min-width:168px;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:color-mix(in srgb,var(--panel) 96%,transparent);box-shadow:var(--shadow);pointer-events:none;color:var(--text);font-size:12px;line-height:1.55}
+  .chart-tooltip.show{display:block}
+  .chart-tooltip b{color:var(--accent);font-family:var(--mono);font-size:14px}
   .f2{display:flex;flex-direction:column;gap:5px}
   .f2 label{font-size:11px;color:var(--muted)}
   .f2 input{background:var(--panel-2);border:1px solid var(--line);color:var(--text);border-radius:7px;
@@ -1008,6 +1012,10 @@ function renderSteamHistoryChart(points,range="month"){
     const x=xOf(i)-bw/2, y=yVol(d.volume), bh=p.t+ch-y;
     return `<rect class="volume-bar"><title>${esc(formatSteamHistoryTime(d.time))}\n销量 ${d.volume}</title></rect>`.replace("<rect",`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1,bh).toFixed(1)}"`);
   }).join("");
+  const hoverTargets=data.map((d,i)=>{
+    const time=esc(formatSteamHistoryTime(d.time)),price=(+d.price||0).toFixed(2),volume=+d.volume||0;
+    return `<circle class="chart-hover-target" cx="${xOf(i).toFixed(1)}" cy="${yPrice(d.price).toFixed(1)}" r="12" data-time="${time}" data-price="${price}" data-volume="${volume}" tabindex="0" aria-label="${time}，价格 ¥${price}，成交量 ${volume}"/>`;
+  }).join("");
   const line=data.map((d,i)=>`${i?'L':'M'}${xOf(i).toFixed(1)} ${yPrice(d.price).toFixed(1)}`).join(" ");
   const last=data[data.length-1];
   const yTicks=[0,.25,.5,.75,1].map(r=>{
@@ -1027,10 +1035,32 @@ function renderSteamHistoryChart(points,range="month"){
       <line class="axis" x1="${p.l}" y1="${p.t}" x2="${p.l}" y2="${p.t+ch}"/>
       <line class="axis" x1="${p.l}" y1="${p.t+ch}" x2="${w-p.r}" y2="${p.t+ch}"/>
       <line class="axis" x1="${w-p.r}" y1="${p.t}" x2="${w-p.r}" y2="${p.t+ch}"/>
-      ${bars}<path class="price-line" d="${line}"/>
+      ${bars}<path class="price-line" d="${line}"/>${hoverTargets}
       <circle class="dotp" cx="${xOf(data.length-1).toFixed(1)}" cy="${yPrice(last.price).toFixed(1)}" r="4"><title>${esc(formatSteamHistoryTime(last.time))}\n${fmt(last.price)}\n已售出 ${last.volume} 件</title></circle>
       ${xLabels}<text x="18" y="${p.t+ch/2}" transform="rotate(-90 18 ${p.t+ch/2})">价格</text><text x="${w-14}" y="${p.t+ch/2}" transform="rotate(90 ${w-14} ${p.t+ch/2})">销量</text>
-    </svg></div>`;
+    </svg><div class="chart-tooltip" role="status"></div></div>`;
+}
+function bindSteamHistoryHover(box){
+  if(!box) return;
+  const tip=box.querySelector(".chart-tooltip"),targets=box.querySelectorAll(".chart-hover-target");
+  if(!tip || !targets.length) return;
+  const show=(target,event)=>{
+    tip.innerHTML=`<div>${esc(target.dataset.time||"")}</div><b>¥${esc(target.dataset.price||"0.00")}</b><div>成交量 ${Number(target.dataset.volume||0).toLocaleString()} 件</div>`;
+    tip.classList.add("show");
+    const boxRect=box.getBoundingClientRect(),targetRect=target.getBoundingClientRect();
+    const x=event?event.clientX-boxRect.left:targetRect.left+targetRect.width/2-boxRect.left;
+    const y=event?event.clientY-boxRect.top:targetRect.top-boxRect.top;
+    tip.style.left=`${Math.max(8,Math.min(x+14,box.clientWidth-190))}px`;
+    tip.style.top=`${Math.max(8,Math.min(y-72,box.clientHeight-78))}px`;
+  };
+  const hide=()=>tip.classList.remove("show");
+  targets.forEach(target=>{
+    target.addEventListener("pointerenter",event=>show(target,event));
+    target.addEventListener("pointermove",event=>show(target,event));
+    target.addEventListener("pointerleave",hide);
+    target.addEventListener("focus",()=>show(target));
+    target.addEventListener("blur",hide);
+  });
 }
 function historyRangeButtons(active="month"){
   return `<div style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:10px">${["week","month","year","all"].map(r=>`<button class="btn ${r===active?'':'ghost'} sm" data-range="${r}" type="button">${{week:"周",month:"月",year:"年",all:"总览"}[r]}</button>`).join("")}</div>`;
@@ -1057,6 +1087,7 @@ async function openSteamHistory(it){
           ? `<p class="muted" style="margin:0">显示缓存${j.cache_age!=null?' · '+ageText(j.cache_age):''}</p>`
           : "";
       body.innerHTML=`<div class="steam-chart"><p style="margin:0"><b>${esc(j.name)}</b><span class="sub">${esc(gameName(j.appid))} · Steam 官方售价中位数 / 成交量</span></p>${cacheNote}${historyRangeButtons(range)}<div id="chartMount">${renderSteamHistoryChart(j.points,range)}</div></div>`;
+      bindSteamHistoryHover(body.querySelector(".chartbox"));
       body.querySelectorAll("[data-range]").forEach(b=>b.addEventListener("click",()=>{range=b.dataset.range;draw();}));
     };
     draw();

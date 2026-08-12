@@ -14,6 +14,9 @@ PAGE_CNY = r'''for sale starting at <span class="price">¥2.79</span>
 amtMinSellOrder\":279,\"eCurrency\":23,\"cSellOrders\":12345'''
 
 
+PAGE_CNY_SSR = r'''window.SSR.renderContext=JSON.parse("{\"state\":{\"data\":{\"amtMaxBuyOrder\":235,\"amtMinSellOrder\":236,\"eCurrency\":23,\"cBuyOrders\":100,\"cSellOrders\":382275,\"rgCompactSellOrders\":[236,1,242,256,243,515]}}}")'''
+
+
 class Response:
     def __init__(self, status_code, text="", payload=None):
         self.status_code = status_code
@@ -51,7 +54,8 @@ def test_listing_page_parser():
 
 def test_429_falls_back_without_pretending_sgd_is_cny():
     fake = FakeSession([Response(429), Response(200, PAGE_SGD)])
-    with patch.object(A, "SESSION", fake):
+    with patch.object(A, "SESSION", fake), \
+         patch.object(A, "fetch_new_market_price", return_value={"error": "unavailable"}):
         A.PRICE_OVERVIEW_COOLDOWN_UNTIL = 0
         row = A.fetch_steam_price("Revolution Case", 730)
     assert row["error"] == "rate_limited", row
@@ -66,6 +70,38 @@ def test_page_price_is_numeric_when_currency_matches():
     with patch.object(A, "SESSION", fake):
         row = A.fetch_listing_page_price("Revolution Case", 730, "rate_limited")
     assert row["error"] is None and row["lowest"] == 2.79, row
+
+
+def test_listing_page_parser_reads_new_ssr_order_book():
+    row = A.parse_listing_page_price(PAGE_CNY_SSR)
+    assert row["cents"] == 236 and row["currency"] == 23, row
+    assert row["volume"] == "382275", row
+
+
+def test_market_search_resolves_exact_new_group_id():
+    payload = {"success": True, "results": [
+        {"hash_name": "Other Case", "asset_description": {"market_bucket_group_id": "G1"}},
+        {"hash_name": "Revolution Case", "asset_description": {"market_bucket_group_id": "G1890263004"}},
+    ]}
+    assert A.parse_market_group_id(payload, "Revolution Case") == "G1890263004"
+
+
+def test_steam_currency_ids_do_not_treat_jpy_as_gbp():
+    assert A.PRICE_CURRENCY_NAMES[8] == "JPY"
+    assert A.PRICE_CURRENCY_NAMES[2] == "GBP"
+
+
+def test_new_market_order_book_returns_native_cny_lowest():
+    payload = {"success": True, "data": {
+        "amtMinSellOrder": 236, "eCurrency": 23, "cSellOrders": 382275,
+        "rgCompactSellOrders": [236, 1, 242, 256],
+    }}
+    fake = FakeHistorySteam(Response(200, payload=payload))
+    with patch.object(A, "STEAM", fake), \
+         patch.object(A, "resolve_market_group_id", return_value="G1890263004"):
+        row = A.fetch_new_market_price("Revolution Case", 730)
+    assert row["lowest"] == 2.36 and row["price_currency"] == 23, row
+    assert row["source"] == "market_order_book" and row["volume"] == "382275", row
 
 
 def test_estimate_cny_accepts_currency_name_from_old_cache():
@@ -115,7 +151,8 @@ def test_steam_rate_limit_result_keeps_buff_reference_price():
             {"id": 2, "market_hash_name": "Revolution Case", "sell_min_price": "2.63"}
         ]}}),
     ])
-    with patch.object(A, "SESSION", fake):
+    with patch.object(A, "SESSION", fake), \
+         patch.object(A, "fetch_new_market_price", return_value={"error": "unavailable"}):
         A.PRICE_OVERVIEW_COOLDOWN_UNTIL = 0
         row = A.fetch_steam_price("Revolution Case", 730)
     assert row["error"] == "rate_limited", row

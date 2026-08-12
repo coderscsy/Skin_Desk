@@ -482,7 +482,12 @@ class SteamSession:
         if "/login/" in url:
             return True
         content_type = (response.headers.get("Content-Type") or "").lower()
-        text = (getattr(response, "text", "") or "")[:8000]
+        full_text = getattr(response, "text", "") or ""
+        # 新版市场 SSR 把登录状态放在页面深处，不能只检查开头 8KB。
+        if re.search(r'window\.UserConfig\s*=\s*\{[^{}]{0,500}["\']logged_in["\']\s*:\s*false',
+                     full_text, re.I):
+            return True
+        text = full_text[:8000]
         if "text/html" not in content_type and not text.lstrip().startswith("<"):
             return False
         lowered = text.lower()

@@ -22,3 +22,12 @@ def test_frontend_shows_batch_profit_as_a_separate_visible_column():
     assert 'class="batch-profit-col"' in html
     assert 'class="batch-total-col"' in html
     assert ".compact-view th:nth-child(16)" in html
+
+
+def test_steam_history_chart_has_hover_tooltip():
+    html = Path(__file__).with_name("index.html").read_text(encoding="utf-8")
+    assert 'class="chart-tooltip"' in html
+    assert 'class="chart-hover-target"' in html
+    assert "function bindSteamHistoryHover" in html
+    assert 'addEventListener("pointerenter"' in html
+    assert 'addEventListener("pointermove"' in html

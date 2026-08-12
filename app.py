@@ -366,7 +366,7 @@ def attach_buff_reference(result, name, appid):
 
 
 PRICE_CURRENCY_NAMES = {
-    1: "USD", 3: "EUR", 5: "RUB", 8: "GBP", 13: "SGD", 20: "CAD",
+    1: "USD", 2: "GBP", 3: "EUR", 5: "RUB", 8: "JPY", 13: "SGD", 20: "CAD",
     21: "AUD", 22: "NZD", 23: "CNY", 29: "HKD", 30: "TWD",
 }
 
@@ -374,8 +374,9 @@ PRICE_CURRENCY_NAMES = {
 # 后续如果接在线汇率，只需要替换 estimate_cny_from_steam_page_price 的 rate 来源。
 PRICE_TO_CNY_FIXED_RATES = {
     1: 7.25,   # USD
+    2: 9.20,   # GBP
     3: 7.90,   # EUR
-    8: 9.20,   # GBP
+    8: 0.048,  # JPY
     13: 5.40,  # SGD
     20: 5.30,  # CAD
     21: 4.75,  # AUD
@@ -384,6 +385,44 @@ PRICE_TO_CNY_FIXED_RATES = {
     30: 0.23,  # TWD
 }
 PRICE_CURRENCY_IDS = {v: k for k, v in PRICE_CURRENCY_NAMES.items()}
+MARKET_GROUP_CACHE = {}
+
+
+def parse_market_group_id(payload, name):
+    """从新版市场搜索结果精确解析 G... 商品组 ID。"""
+    if not isinstance(payload, dict) or not payload.get("success"):
+        return None
+    for row in payload.get("results") or []:
+        if row.get("hash_name") != name:
+            continue
+        group_id = (row.get("asset_description") or {}).get("market_bucket_group_id")
+        if isinstance(group_id, str) and re.fullmatch(r"G\d+", group_id):
+            return group_id
+    return None
+
+
+def resolve_market_group_id(name, appid):
+    key = (int(appid), name)
+    if MARKET_GROUP_CACHE.get(key):
+        return MARKET_GROUP_CACHE[key]
+    params = {
+        "query": name, "start": 0, "count": 10, "search_descriptions": 0,
+        "sort_column": "name", "sort_dir": "asc", "appid": int(appid),
+        "norender": 1, "l": "schinese",
+    }
+    with STEAM_LOCK:
+        response = STEAM.authenticated_get(
+            "https://steamcommunity.com/market/search/render/", params=params,
+            headers={"Referer": "https://steamcommunity.com/market/"}, timeout=20)
+    if response.status_code != 200:
+        return None
+    try:
+        group_id = parse_market_group_id(response.json(), name)
+    except ValueError:
+        group_id = None
+    if group_id:
+        MARKET_GROUP_CACHE[key] = group_id
+    return group_id
 
 
 def currency_id_from_any(value):
@@ -411,7 +450,8 @@ def parse_listing_page_price(page):
     idx = page.rfind("amtMinSellOrder")
     if idx < 0:
         return None
-    chunk = page[idx:idx + 500]
+    # 新版 SSR 的 eCurrency/cSellOrders 位于最低价字段之前，且 JSON 被多层转义。
+    chunk = page[max(0, idx - 500):idx + 1200]
     amount = re.search(r"amtMinSellOrder[^0-9]{1,40}(\d+)", chunk)
     currency = re.search(r"eCurrency[^0-9]{1,40}(\d+)", chunk)
     if not amount or not currency:
@@ -461,9 +501,55 @@ def fetch_listing_page_price(name, appid, original_error):
         return {"error": original_error or str(e)}
 
 
+def fetch_new_market_price(name, appid):
+    """读取新版 G... 商品页嵌入的实时卖单簿；仅接受 Steam 原生人民币值。"""
+    try:
+        group_id = resolve_market_group_id(name, appid)
+        if not group_id:
+            return {"error": "market_group_not_found"}
+        bucket_id = group_id[1:]
+        url = "https://steamcommunity.com/market/orderbook"
+        with STEAM_LOCK:
+            response = STEAM.authenticated_get(
+                url, params={"q": "Load", "qp": json.dumps([int(appid), bucket_id], separators=(",", ":"))},
+                headers={"x-valve-request-type": "queryAction",
+                         "Referer": f"https://steamcommunity.com/market/listings/{int(appid)}/{group_id}"},
+                timeout=25)
+        if response.status_code != 200:
+            return {"error": f"market_order_book_http_{response.status_code}"}
+        try:
+            payload = response.json()
+        except ValueError:
+            return {"error": "market_order_book_not_json"}
+        data = payload.get("data") if isinstance(payload, dict) and payload.get("success") else None
+        if not isinstance(data, dict) or not data.get("amtMinSellOrder"):
+            return {"error": "market_order_book_no_data"}
+        currency = int(data.get("eCurrency") or 0)
+        result = {
+            "price_currency": currency,
+            "price_currency_name": PRICE_CURRENCY_NAMES.get(currency, str(currency)),
+            "volume": str(data.get("cSellOrders") or ""),
+            "source": "market_order_book",
+            "market_group_id": group_id,
+        }
+        if currency != int(CONFIG["currency"]):
+            result.update({"lowest": None, "error": "currency_mismatch",
+                           "warning": "market_order_book_currency_mismatch"})
+            return result
+        result.update({"lowest": int(data["amtMinSellOrder"]) / 100, "error": None})
+        return result
+    except NeedAuth:
+        return {"error": "need_auth"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 def fetch_steam_price(name, appid=None):
     global PRICE_OVERVIEW_COOLDOWN_UNTIL
     appid = int(appid or CONFIG["appid"])
+    live_result = fetch_new_market_price(name, appid)
+    if live_result.get("lowest") is not None and not live_result.get("error"):
+        return attach_buff_reference(live_result, name, appid)
     params = {
         "country": "CN",
         "currency": CONFIG["currency"],

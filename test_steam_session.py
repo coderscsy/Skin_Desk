@@ -5,6 +5,7 @@
 """
 import base64
 import random
+from types import SimpleNamespace
 
 import steam_session as ss
 
@@ -110,6 +111,16 @@ def test_parse_inventory():
     assert items[0]["name_zh"] == "蛇噬武器箱", items
     assert ss.parse_inventory({"success": 0}) == {}
     assert ss.parse_inventory({}) == {}
+
+
+def test_new_market_shell_is_detected_as_logged_out_even_when_marker_is_late():
+    response = SimpleNamespace(
+        status_code=200,
+        url="https://steamcommunity.com/market/listings/730/G1890263004",
+        headers={"Content-Type": "text/html; charset=utf-8"},
+        text="<html>" + ("x" * 12000) + 'window.UserConfig={"logged_in":false}',
+    )
+    assert ss.SteamSession._read_response_needs_login(response) is True
     print("  ok  库存解析 name->assetid（含同款多件 / 缺描述 / marketable）")
 
 
