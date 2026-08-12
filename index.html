@@ -156,8 +156,9 @@
   .badge.sold{background:rgba(101,120,139,.22);color:var(--text)}
   .badge.error{background:rgba(232,115,107,.16);color:var(--down)}
   .cd{font-family:var(--mono);font-size:12px;color:var(--warn);margin-top:3px;display:block}
-  .batch-profit-col{min-width:124px;white-space:nowrap}
-  .batch-profit-total{font-family:var(--mono);font-size:15px;font-weight:800}
+    .batch-profit-col,.batch-total-col{min-width:124px;white-space:nowrap}
+    .batch-profit-total{font-family:var(--mono);font-size:15px;font-weight:800}
+    .batch-total-amount{font-family:var(--mono);font-size:15px;font-weight:800;color:var(--text)}
   .item-name-zh{font-weight:750;color:var(--text-strong);line-height:1.35}
   td input.item-name-en{font-size:11px;color:var(--muted);margin-top:2px}
   .sold-group td{padding:8px 12px;background:color-mix(in srgb,var(--panel-2) 90%,transparent);border-top:1px solid var(--line)}
@@ -344,7 +345,7 @@
   .compact-view th:nth-child(7),.compact-view td:nth-child(7),
   .compact-view th:nth-child(9),.compact-view td:nth-child(9),
   .compact-view th:nth-child(12),.compact-view td:nth-child(12),
-  .compact-view th:nth-child(15),.compact-view td:nth-child(15){display:none}
+    .compact-view th:nth-child(16),.compact-view td:nth-child(16){display:none}
   .compact-view table{min-width:1060px}
   .iconbtn{padding:6px 9px}
   .empty{margin-top:0;border-radius:12px}
@@ -498,7 +499,8 @@
         <th>盈亏</th>
         <th class="l">出售时间</th>
         <th class="l">状态</th>
-        <th class="batch-profit-col">本批总盈利</th>
+              <th class="batch-profit-col">本批盈利</th>
+              <th class="batch-total-col">本批总额</th>
         <th class="l">交易链接</th>
         <th></th>
       </tr></thead>
@@ -756,6 +758,21 @@ function batchProfitCell(it){
   return {cls,html:`<span class="batch-profit-total">${signedFmt(total)}</span><span class="sub">${kind} · ${qty} 件 × ${signedFmt(unit)}</span>`};
 }
 
+function batchTotalCell(it){
+  const qty=statQty(it),sold=it.status==="sold";
+  const unitProfit=Number(sold?it.sold_profit:it.profit);
+  let unitTotal=Number(sold?it.sold_net:it.net);
+  if(!Number.isFinite(unitTotal)){
+    const buy=Number(it.buy),profit=Number.isFinite(unitProfit)?unitProfit:0;
+    unitTotal=(Number.isFinite(buy)?buy:0)+profit;
+  }
+  const total=unitTotal*qty;
+  const profit=(Number.isFinite(unitProfit)?unitProfit:0)*qty;
+  const principal=total-profit;
+  const money=v=>`¥${Number(v||0).toFixed(2)}`;
+  return `<div class="batch-total-amount">${money(total)}</div><div class="sub">本金 ${money(principal)} + 盈利 ${signedFmt(profit)}</div>`;
+}
+
 function inventoryCheck(it){
   const available=Math.max(0, Number(it&&it.steam_inventory_count)||0);
   const requested=Math.max(1, Number(it&&it.operation_qty)||1);
@@ -802,7 +819,7 @@ function render(){
       const group=document.createElement("tr");
       group.className="sold-group";
       group.setAttribute("data-sold-group","1");
-      group.innerHTML=`<td colspan="16"><button class="sold-group-toggle" type="button" data-act="toggle-sold"><span data-sold-label>▸ 已售出（${soldCount}）</span><span>历史记录</span></button></td>`;
+      group.innerHTML=`<td colspan="17"><button class="sold-group-toggle" type="button" data-act="toggle-sold"><span data-sold-label>▸ 已售出（${soldCount}）</span><span>历史记录</span></button></td>`;
       tb.appendChild(group);
       soldGroupAdded=true;
     }
@@ -812,7 +829,7 @@ function render(){
     const listDisabled=sold||listLocked||!inv.ok;
     const listTitle=sold?"已售出记录只读":(listLocked?"仍有挂单待确认，请先完成确认或清理待确认记录":(!inv.ok?inv.msg:""));
     const hasActiveListings=(+it.steam_listing_count||0)>0;
-    const batchProfit=batchProfitCell(it);
+    const batchProfit=batchProfitCell(it),batchTotal=batchTotalCell(it);
 
     const tr=document.createElement("tr");
     tr.dataset.id=it.id;
@@ -838,6 +855,7 @@ function render(){
       <td class="l"><span class="badge ${it.status}">${statusText(it.status)}</span>
           ${it.last_msg?`<div class="msg">${esc(it.last_msg)}</div>`:''}${sold&&it.sold_at?`<div class="msg">售出时间：${new Date(it.sold_at*1000).toLocaleString()}</div>`:''}</td>
       <td class="batch-profit-col ${batchProfit.cls}">${batchProfit.html}</td>
+      <td class="batch-total-col">${batchTotal}</td>
       <td class="l"><input class="tl" value="${esc(it.trade_url||'')}" data-k="trade_url" placeholder="收货 交易链接" ${ro}>
           <span class="tlhint" data-tl="${it.id}"></span></td>
       <td class="act">
@@ -949,6 +967,8 @@ function patchRow(id,it){
   pcell.className="cell-profit "+pc.profitCls; pcell.innerHTML=pc.profit;
   const batch=batchProfitCell(it), batchCell=tr.querySelector(".batch-profit-col");
   if(batchCell){ batchCell.className="batch-profit-col "+batch.cls; batchCell.innerHTML=batch.html; }
+  const totalCell=tr.querySelector(".batch-total-col");
+  if(totalCell) totalCell.innerHTML=batchTotalCell(it);
 }
 
 function parseSteamHistoryTime(s){
