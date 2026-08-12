@@ -401,6 +401,74 @@ def parse_market_group_id(payload, name):
     return None
 
 
+def parse_market_search_page_price(page, name):
+    """解析 Steam 市场搜索页内嵌的当前最低价，按稳定英文名精确匹配。"""
+    marker = "g_rgPreviousPopularData"
+    idx = page.find(marker)
+    if idx < 0:
+        return None
+    match = re.search(r"g_rgPreviousPopularData\s*=\s*(\[.*?\])\s*;", page[idx:], re.S)
+    if not match:
+        return None
+    try:
+        rows = json.loads(match.group(1))
+    except (TypeError, ValueError):
+        return None
+    config_idx = page.find("filterConfig")
+    config_chunk = page[config_idx:config_idx + 1000] if config_idx >= 0 else page[:5000]
+    currency_match = re.search(r'eCurrency\\*"\s*:\s*(\d+)', config_chunk)
+    currency = int(currency_match.group(1)) if currency_match else 0
+    for row in rows:
+        if row.get("hash_name") != name:
+            continue
+        try:
+            cents = int(row.get("sell_price") or 0)
+            volume = int(row.get("sell_listings") or 0)
+        except (TypeError, ValueError):
+            return None
+        if cents > 0 and currency > 0:
+            return {"cents": cents, "currency": currency, "volume": volume}
+    return None
+
+
+def fetch_market_search_page_price(name, appid):
+    """读取不走 priceoverview 的市场搜索页实时最低价。"""
+    try:
+        with STEAM_LOCK:
+            response = STEAM.authenticated_get(
+                "https://steamcommunity.com/market/market/search",
+                params={"appid": int(appid), "q": name},
+                headers={"Referer": "https://steamcommunity.com/market/"}, timeout=25)
+        if response.status_code != 200:
+            return {"error": f"market_search_page_http_{response.status_code}"}
+        price = parse_market_search_page_price(response.text, name)
+        if not price:
+            return {"error": "market_search_page_no_exact_price"}
+        currency = price["currency"]
+        result = {
+            "price_currency": currency,
+            "price_currency_name": PRICE_CURRENCY_NAMES.get(currency, str(currency)),
+            "volume": str(price["volume"]),
+            "source": "market_search_page",
+        }
+        if currency == int(CONFIG["currency"]):
+            result.update({"lowest": price["cents"] / 100, "error": None})
+            return result
+        estimate, estimate_source = estimate_cny_from_steam_page_price(price)
+        if estimate is not None:
+            result.update({"lowest": estimate, "price_cny_estimate": estimate,
+                           "price_cny_estimate_source": estimate_source,
+                           "source": "market_search_page_fx", "error": None,
+                           "warning": "converted_currency"})
+            return result
+        result.update({"lowest": None, "error": "currency_mismatch"})
+        return result
+    except NeedAuth:
+        return {"error": "need_auth"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 def resolve_market_group_id(name, appid):
     key = (int(appid), name)
     if MARKET_GROUP_CACHE.get(key):
@@ -504,6 +572,9 @@ def fetch_listing_page_price(name, appid, original_error):
 def fetch_new_market_price(name, appid):
     """读取新版 G... 商品页嵌入的实时卖单簿；仅接受 Steam 原生人民币值。"""
     try:
+        search_result = fetch_market_search_page_price(name, appid)
+        if search_result.get("lowest") is not None and not search_result.get("error"):
+            return search_result
         group_id = resolve_market_group_id(name, appid)
         if not group_id:
             return {"error": "market_group_not_found"}
@@ -533,6 +604,20 @@ def fetch_new_market_price(name, appid):
             "market_group_id": group_id,
         }
         if currency != int(CONFIG["currency"]):
+            estimate, estimate_source = estimate_cny_from_steam_page_price({
+                "currency": currency, "cents": int(data["amtMinSellOrder"]),
+            })
+            if estimate is not None:
+                result.update({
+                    "lowest": estimate,
+                    "price_cny_estimate": estimate,
+                    "price_cny_estimate_source": estimate_source,
+                    "price_text": f"¥{estimate:.2f}（{result['price_currency_name']} 换算）",
+                    "source": "market_order_book_fx",
+                    "error": None,
+                    "warning": "converted_currency",
+                })
+                return result
             result.update({"lowest": None, "error": "currency_mismatch",
                            "warning": "market_order_book_currency_mismatch"})
             return result

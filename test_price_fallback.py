@@ -15,6 +15,8 @@ amtMinSellOrder\":279,\"eCurrency\":23,\"cSellOrders\":12345'''
 
 
 PAGE_CNY_SSR = r'''window.SSR.renderContext=JSON.parse("{\"state\":{\"data\":{\"amtMaxBuyOrder\":235,\"amtMinSellOrder\":236,\"eCurrency\":23,\"cBuyOrders\":100,\"cSellOrders\":382275,\"rgCompactSellOrders\":[236,1,242,256,243,515]}}}")'''
+PAGE_CNY_SEARCH = r'''filterConfig":{"currency":{"eCurrency":23}}
+var g_rgPreviousPopularData = [{"name":"变革武器箱","hash_name":"Revolution Case","sell_listings":384163,"sell_price":241},{"name":"Other","hash_name":"Other Case","sell_listings":1,"sell_price":999}];'''
 
 
 class Response:
@@ -102,6 +104,25 @@ def test_new_market_order_book_returns_native_cny_lowest():
         row = A.fetch_new_market_price("Revolution Case", 730)
     assert row["lowest"] == 2.36 and row["price_currency"] == 23, row
     assert row["source"] == "market_order_book" and row["volume"] == "382275", row
+
+
+def test_new_market_order_book_converts_jpy_instead_of_falling_into_rate_limit():
+    payload = {"success": True, "data": {
+        "amtMinSellOrder": 5800, "eCurrency": 8, "cSellOrders": 382905,
+        "rgCompactSellOrders": [5800, 1552, 5900, 1584],
+    }}
+    fake = FakeHistorySteam(Response(200, payload=payload))
+    with patch.object(A, "STEAM", fake), \
+         patch.object(A, "resolve_market_group_id", return_value="G1890263004"):
+        row = A.fetch_new_market_price("Revolution Case", 730)
+    assert row["lowest"] == 2.78 and row["error"] is None, row
+    assert row["source"] == "market_order_book_fx", row
+    assert row["price_currency_name"] == "JPY" and row["warning"] == "converted_currency", row
+
+
+def test_market_search_page_returns_exact_native_cny_price():
+    row = A.parse_market_search_page_price(PAGE_CNY_SEARCH, "Revolution Case")
+    assert row == {"cents": 241, "currency": 23, "volume": 384163}, row
 
 
 def test_estimate_cny_accepts_currency_name_from_old_cache():
