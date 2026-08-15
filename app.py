@@ -863,9 +863,13 @@ def parse_listing_page_price(page):
 
 def fetch_listing_page_price(name, appid, original_error):
     try:
-        r = SESSION.get(
-            f"https://steamcommunity.com/market/listings/{appid}/{quote(name, safe='')}",
-            params={"l": "english"}, timeout=20)
+        # 与库存、搜索和订单簿共用 Steam 登录会话，避免退回匿名市场请求。
+        with STEAM_LOCK:
+            r = STEAM.authenticated_get(
+                f"https://steamcommunity.com/market/listings/{appid}/{quote(name, safe='')}",
+                params={"l": "english"},
+                headers={"Referer": "https://steamcommunity.com/market/"},
+                timeout=20)
         if r.status_code != 200:
             return {"error": original_error or f"page_http_{r.status_code}"}
         page_price = parse_listing_page_price(r.text)
@@ -878,6 +882,9 @@ def fetch_listing_page_price(name, appid, original_error):
             "volume": page_price["volume"],
             "source": "listing_page",
         }
+        if original_error:
+            # 商品页成功后，上游 JSON 接口失败只是降级提示，不是最终价格错误。
+            result["upstream_warning"] = original_error
         estimate, estimate_source = estimate_cny_from_steam_page_price(page_price)
         if estimate is not None:
             result["price_cny_estimate"] = estimate
@@ -886,9 +893,11 @@ def fetch_listing_page_price(name, appid, original_error):
             result.update({"lowest": page_price["cents"] / 100, "error": None})
         else:
             # 不把 SGD 等出口币种冒充成人民币，也不用于自动建议上架价。
-            result.update({"lowest": None, "error": original_error or "currency_mismatch",
+            result.update({"lowest": None, "error": "currency_mismatch",
                            "warning": "fallback_currency"})
         return result
+    except NeedAuth:
+        return {"error": "need_auth"}
     except Exception as e:
         return {"error": original_error or str(e)}
 
@@ -963,8 +972,14 @@ def fetch_steam_price(name, appid=None):
     original_error = "rate_limited" if PRICE_OVERVIEW_COOLDOWN_UNTIL > time.time() else None
     if not original_error:
         try:
-            r = SESSION.get("https://steamcommunity.com/market/priceoverview/",
-                            params=params, timeout=15)
+            # 与浏览器可用的账号登录态保持一致，不再使用独立匿名 SESSION。
+            with STEAM_LOCK:
+                r = STEAM.authenticated_get(
+                    "https://steamcommunity.com/market/priceoverview/",
+                    params=params,
+                    headers={"Referer": f"https://steamcommunity.com/market/listings/{appid}/"
+                                         f"{quote(name, safe='')}"},
+                    timeout=15)
             if r.status_code == 429:
                 PRICE_OVERVIEW_COOLDOWN_UNTIL = time.time() + 1800
                 original_error = "rate_limited"
@@ -981,10 +996,12 @@ def fetch_steam_price(name, appid=None):
                         "error": None,
                     }, name, appid)
                 original_error = "no_data"
+        except NeedAuth:
+            original_error = "need_auth"
         except Exception as e:
             original_error = str(e)
     result = fetch_listing_page_price(name, appid, original_error)
-    if original_error == "rate_limited":
+    if original_error == "rate_limited" and result.get("error") == "rate_limited":
         result["retry_after"] = max(0, int(PRICE_OVERVIEW_COOLDOWN_UNTIL - time.time()))
     return attach_buff_reference(result, name, appid)
 
