@@ -1018,7 +1018,7 @@ def price_refresher():
                 if (not c) or (time.time() - c.get("ts", 0) > CONFIG["cache_ttl"]):
                     res = fetch_steam_price(name, appid)
                     _store_price_result((appid, name), res, c)
-                    time.sleep(12)
+                    time.sleep(2)
         except Exception:
             traceback.print_exc()
         time.sleep(15)
@@ -1033,7 +1033,7 @@ def refresh_prices_once(force=False):
     buff = 0
     with LOCK:
         keys = sorted({(item_appid(it), it["name"]) for it in ITEMS})
-    for appid, name in keys:
+    for index, (appid, name) in enumerate(keys):
         c = PRICE_CACHE.get((appid, name))
         if (not force) and c and (time.time() - c.get("ts", 0) <= CONFIG["cache_ttl"]):
             continue
@@ -1049,7 +1049,9 @@ def refresh_prices_once(force=False):
         else:
             refreshed += 1
         _store_price_result((appid, name), res, c)
-        time.sleep(12)
+        # 搜索接口本身返回很快；手动刷新只保留极短间隔，且最后一件不等待。
+        if index + 1 < len(keys):
+            time.sleep(0.3)
     return {"refreshed": refreshed, "limited": limited, "errors": errors, "buff": buff,
             "fallback": fallback, "total": len(keys)}
 
