@@ -239,6 +239,16 @@ def load_price_cache():
             if not name:
                 continue
             data = {k: v for k, v in row.items() if k not in ("appid", "name")}
+            # 旧版本会把辅助接口的 429 写成商品整体错误。已有可展示价格时，
+            # 启动后只标记为缓存数据，不继续显示 Steam 限流。
+            if data.get("error") == "rate_limited" and (
+                    data.get("lowest") is not None or data.get("price_text")
+                    or data.get("buff_price") is not None):
+                data["error"] = None
+                data["stale"] = True
+                data.pop("retry_after", None)
+                if data.get("upstream_warning") == "rate_limited":
+                    data.pop("upstream_warning", None)
             if data.get("price_text") and data.get("price_cny_estimate") is None:
                 estimate, source = estimate_cny_from_steam_page_price({
                     "currency": data.get("price_currency"),
@@ -891,6 +901,10 @@ def fetch_listing_page_price(name, appid, original_error):
             result["price_cny_estimate_source"] = estimate_source
         if page_price["currency"] == int(CONFIG["currency"]):
             result.update({"lowest": page_price["cents"] / 100, "error": None})
+        elif estimate is not None:
+            result.update({"lowest": estimate, "error": None,
+                           "source": "listing_page_fx",
+                           "warning": "converted_currency"})
         else:
             # 不把 SGD 等出口币种冒充成人民币，也不用于自动建议上架价。
             result.update({"lowest": None, "error": "currency_mismatch",
@@ -958,51 +972,38 @@ def fetch_new_market_price(name, appid):
 
 
 def fetch_steam_price(name, appid=None):
-    global PRICE_OVERVIEW_COOLDOWN_UNTIL
     appid = int(appid or CONFIG["appid"])
-    live_result = fetch_new_market_price(name, appid)
-    if live_result.get("lowest") is not None and not live_result.get("error"):
-        return attach_buff_reference(live_result, name, appid)
-    params = {
-        "country": "CN",
-        "currency": CONFIG["currency"],
-        "appid": appid,
-        "market_hash_name": name,
-    }
-    original_error = "rate_limited" if PRICE_OVERVIEW_COOLDOWN_UNTIL > time.time() else None
-    if not original_error:
-        try:
-            # 与浏览器可用的账号登录态保持一致，不再使用独立匿名 SESSION。
-            with STEAM_LOCK:
-                r = STEAM.authenticated_get(
-                    "https://steamcommunity.com/market/priceoverview/",
-                    params=params,
-                    headers={"Referer": f"https://steamcommunity.com/market/listings/{appid}/"
-                                         f"{quote(name, safe='')}"},
-                    timeout=15)
-            if r.status_code == 429:
-                PRICE_OVERVIEW_COOLDOWN_UNTIL = time.time() + 1800
-                original_error = "rate_limited"
-            elif r.status_code != 200:
-                original_error = f"http_{r.status_code}"
-            else:
-                d = r.json()
-                if d.get("success") and parse_price(d.get("lowest_price")) is not None:
-                    return attach_buff_reference({
-                        "lowest": parse_price(d.get("lowest_price")),
-                        "median": parse_price(d.get("median_price")),
-                        "volume": d.get("volume"),
-                        "source": "priceoverview",
-                        "error": None,
-                    }, name, appid)
-                original_error = "no_data"
-        except NeedAuth:
-            original_error = "need_auth"
-        except Exception as e:
-            original_error = str(e)
-    result = fetch_listing_page_price(name, appid, original_error)
-    if original_error == "rate_limited" and result.get("error") == "rate_limited":
-        result["retry_after"] = max(0, int(PRICE_OVERVIEW_COOLDOWN_UNTIL - time.time()))
+    # 与“添加物品 -> 搜索商品”复用同一个已验证可用的 search/render 数据源。
+    # 只接受 appid 和英文市场名完全匹配的结果，避免模糊搜索串价。
+    results, _total_count, search_warning, cached = search_steam_market_candidates(
+        name, appid, start=0, count=10
+    )
+    expected = _market_name_key(name)
+    exact = next((row for row in results
+                  if int(row.get("appid") or 0) == appid
+                  and _market_name_key(row.get("market_hash_name")) == expected), None)
+    if exact and exact.get("sell_price") is not None:
+        localized_name = str(exact.get("name") or "").strip()
+        result = {
+            "lowest": float(exact["sell_price"]),
+            "volume": str(exact.get("sell_listings") or ""),
+            "price_text": exact.get("sell_price_text") or f"¥{float(exact['sell_price']):.2f}",
+            "price_currency": 23,
+            "price_currency_name": "CNY",
+            "source": "market_search_cache" if cached else "market_search_render",
+            "error": None,
+        }
+        if localized_name and _market_name_key(localized_name) != expected:
+            result["name_zh"] = localized_name
+        if search_warning:
+            result["warning"] = "market_search_cached"
+    else:
+        result = {
+            "error": "market_search_no_exact_price",
+            "source": "market_search_render",
+        }
+        if search_warning:
+            result["detail"] = search_warning
     return attach_buff_reference(result, name, appid)
 
 
@@ -1017,7 +1018,7 @@ def price_refresher():
                 if (not c) or (time.time() - c.get("ts", 0) > CONFIG["cache_ttl"]):
                     res = fetch_steam_price(name, appid)
                     _store_price_result((appid, name), res, c)
-                    time.sleep(2 if res.get("source") == "listing_page" else 20)
+                    time.sleep(12)
         except Exception:
             traceback.print_exc()
         time.sleep(15)
@@ -1048,7 +1049,7 @@ def refresh_prices_once(force=False):
         else:
             refreshed += 1
         _store_price_result((appid, name), res, c)
-        time.sleep(2 if res.get("source") == "listing_page" else 20)
+        time.sleep(12)
     return {"refreshed": refreshed, "limited": limited, "errors": errors, "buff": buff,
             "fallback": fallback, "total": len(keys)}
 
